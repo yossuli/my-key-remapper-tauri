@@ -79,18 +79,18 @@ export interface PassthroughAction {
 export interface MouseMoveAction {
   type: "mouseMove";
   /** 移動先X座標 (絶対ピクセル座標) */
-  x: number;
+  x?: number;
   /** 移動先Y座標 (絶対ピクセル座標) */
-  y: number;
+  y?: number;
 }
 
 /** マウスクリックアクション */
 export interface MouseClickAction {
   type: "mouseClick";
   /** クリック座標X (絶対ピクセル座標) */
-  x: number;
+  x?: number;
   /** クリック座標Y (絶対ピクセル座標) */
-  y: number;
+  y?: number;
   /** クリックボタン */
   button: "left" | "right" | "middle";
   /** クリック回数 (1: シングル, 2: ダブル) */

@@ -1,11 +1,8 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
-import type {
-  MouseHandlers,
-  MouseState,
-} from "@/components/organisms/editor/UnifiedActionEditor";
 import { Center, VStack } from "@/components/template/Flex";
+import type { MouseHandlers, MouseState } from "@/hooks/useBindingConfig";
 import { useScreenSize } from "@/hooks/useScreenSize";
 
 interface MousePositionInputProps {
@@ -33,10 +30,10 @@ export function MousePositionInput({
   const DEFAULT_POSITION_PERCENT = 50;
 
   const relativeX = screenSize
-    ? (x / screenSize.width) * PERCENTAGE_MULTIPLIER
+    ? ((x ?? 0) / screenSize.width) * PERCENTAGE_MULTIPLIER
     : DEFAULT_POSITION_PERCENT;
   const relativeY = screenSize
-    ? (y / screenSize.height) * PERCENTAGE_MULTIPLIER
+    ? ((y ?? 0) / screenSize.height) * PERCENTAGE_MULTIPLIER
     : DEFAULT_POSITION_PERCENT;
   const screenRatioStyle = screenSize
     ? {
@@ -54,7 +51,7 @@ export function MousePositionInput({
             input-onChange={(e) => setMouseX(Number(e.target.value))}
             input-placeholder="0"
             input-type="number"
-            input-value={x.toString()}
+            input-value={x?.toString() ?? "0"}
             label="X"
             setFocused={setFocused}
           />
@@ -65,7 +62,7 @@ export function MousePositionInput({
             input-onChange={(e) => setMouseY(Number(e.target.value))}
             input-placeholder="0"
             input-type="number"
-            input-value={y.toString()}
+            input-value={y?.toString() ?? "0"}
             label="Y"
             setFocused={setFocused}
           />

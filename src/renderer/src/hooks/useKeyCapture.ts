@@ -1,101 +1,84 @@
 import { MAX_VK_CODE, MIN_VK_CODE } from "@shared/constants/vk";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 export interface UseKeyCaptureReturn {
-  keys: number[];
+  // keys は Props から渡されるため、戻り値には含めない（あるいは透過させる）
   holds: number[];
-  addKey: (vk: number) => void;
+  inputKey: (vk: number) => void; // addKey 相当だが、直接追加ではなく入力イベントとして扱う
   removeKey: (vk: number) => void;
   onKeyDown: (vkCode: number) => void;
   onKeyUp: (vkCode: number) => void;
   reset: () => void;
-  setKeys: (keys: number[]) => void;
 }
 
 export interface UseKeyCaptureProps {
-  initialKeys?: number[];
+  currentKeys?: number[];
   onKeysChange?: (keys: number[]) => void;
 }
 
 /**
  * キーキャプチャのロジック（同時押し・連続押し管理）を抽出したフック
+ * ステートレス（Controlled）になり、keys の管理は親に委譲する
  */
 export function useKeyCapture({
-  initialKeys = [],
+  currentKeys = [],
   onKeysChange,
 }: UseKeyCaptureProps = {}): UseKeyCaptureReturn {
-  console.log("[DEBUG] useKeyCapture - render", { initialKeys });
-  const [keys, setKeys] = useState<number[]>(initialKeys);
+  // console.log("[DEBUG] useKeyCapture - render", { currentKeys });
   const [holds, setHolds] = useState<number[]>([]);
 
-  // 1. 下方向の同期：外部（親）からの初期値変更を内部状態に反映
-  // ※ この同期によって onKeysChange が呼ばれないようにすることで、無限ループを回避する
-  useEffect(() => {
-    if (JSON.stringify(keys) !== JSON.stringify(initialKeys)) {
-      console.log("[DEBUG] useKeyCapture - sync from props", { initialKeys });
-      setKeys(initialKeys);
-    }
-  }, [initialKeys, keys]);
-
-  // 2. 上方向の通知：ユーザーアクションによる変更を親に通知するヘルパー
+  // 変更通知ヘルパー
   const notifyChange = useCallback(
     (newKeys: number[]) => {
-      console.log("[DEBUG] useKeyCapture - notify change", { newKeys });
+      // console.log("[DEBUG] useKeyCapture - notify change", { newKeys });
       onKeysChange?.(newKeys);
     },
     [onKeysChange]
   );
 
-  const addKey = useCallback(
+  const inputKey = useCallback(
     (vk: number) => {
       if (vk >= MIN_VK_CODE && vk <= MAX_VK_CODE) {
-        setKeys((prev) => {
-          if (prev.includes(vk)) {
-            return prev;
-          }
-          const next = [...prev, vk];
-          notifyChange(next);
-          return next;
-        });
+        if (currentKeys.includes(vk)) {
+          return;
+        }
+        const next = [...currentKeys, vk];
+        notifyChange(next);
       }
     },
-    [notifyChange]
+    [currentKeys, notifyChange]
   );
 
   const removeKey = useCallback(
     (vk: number) => {
-      setKeys((prev) => {
-        const next = prev.filter((k) => k !== vk);
-        if (next.length !== prev.length) {
-          notifyChange(next);
-        }
-        return next;
-      });
+      const next = currentKeys.filter((k) => k !== vk);
+      if (next.length !== currentKeys.length) {
+        notifyChange(next);
+      }
       setHolds((prev) => prev.filter((k) => k !== vk));
     },
-    [notifyChange]
+    [currentKeys, notifyChange]
   );
 
   const onKeyDown = useCallback(
     (vkCode: number) => {
       setHolds((prev) => [...prev.filter((k) => k !== vkCode), vkCode]);
 
-      setKeys((prev) => {
-        // 何も押されていない状態からの最初のキーなら置き換え、そうでなければ追加
-        let next: number[];
-        if (holds.length === 0) {
-          next = [vkCode];
-        } else {
-          next = prev.includes(vkCode) ? prev : [...prev, vkCode];
-        }
+      // 何も押されていない状態からの最初のキーなら置き換え、そうでなければ追加
+      let next: number[];
+      if (holds.length === 0) {
+        next = [vkCode];
+      } else {
+        next = currentKeys.includes(vkCode)
+          ? currentKeys
+          : [...currentKeys, vkCode];
+      }
 
-        if (JSON.stringify(next) !== JSON.stringify(prev)) {
-          notifyChange(next);
-        }
-        return next;
-      });
+      if (JSON.stringify(next) !== JSON.stringify(currentKeys)) {
+        notifyChange(next);
+      }
     },
-    [holds.length, notifyChange]
+    [holds.length, currentKeys, notifyChange]
   );
 
   const onKeyUp = useCallback((vkCode: number) => {
@@ -103,28 +86,16 @@ export function useKeyCapture({
   }, []);
 
   const reset = useCallback(() => {
-    setKeys([]);
     setHolds([]);
     notifyChange([]);
   }, [notifyChange]);
 
-  // 手動での状態更新用（通知付き）
-  const setKeysWithNotify = useCallback(
-    (newKeys: number[]) => {
-      setKeys(newKeys);
-      notifyChange(newKeys);
-    },
-    [notifyChange]
-  );
-
   return {
-    keys,
     holds,
-    addKey,
+    inputKey,
     removeKey,
     onKeyDown,
     onKeyUp,
     reset,
-    setKeys: setKeysWithNotify,
   };
 }

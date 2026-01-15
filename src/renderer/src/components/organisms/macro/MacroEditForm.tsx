@@ -147,10 +147,10 @@ export function MacroEditForm({
         {() => (
           <UnifiedActionEditor
             currentMacroId={macroId}
+            handleEditorClose={handleCloseModal}
             initialAction={initialAction}
-            layers={layers}
-            layout="JIS" // TODO: レイアウトをページから引き継ぐ
-            onCancel={handleCloseModal}
+            layers={layers} // TODO: レイアウトをページから引き継ぐ
+            layout="JIS"
             onSave={(action) => handleSaveStep(action)}
           />
         )}

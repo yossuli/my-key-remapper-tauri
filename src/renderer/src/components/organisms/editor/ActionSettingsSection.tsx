@@ -1,5 +1,6 @@
-import type { ActionType, Layer, TriggerType } from "@shared/types/remapConfig";
+import type { Layer, TriggerType } from "@shared/types/remapConfig";
 import { isCircularMacro } from "@shared/utils/macroUtils";
+import { objectiveMergeSwitch } from "@shared/utils/objectiveSwitch";
 import { Button } from "@/components/atoms/Button";
 import { Select } from "@/components/atoms/Select";
 import { ToggleButton } from "@/components/atoms/ToggleButton";
@@ -13,78 +14,73 @@ import { MousePositionInput } from "@/components/molecules/forms/MousePositionIn
 import { TimingInput } from "@/components/molecules/forms/TimingInput";
 import { RemapKeySection } from "@/components/organisms/editor/RemapKeySection";
 import { HStack, VStack } from "@/components/template/Flex";
-import type { UseKeyEditorActionsReturn } from "@/hooks/useKeyEditorAction";
+import type { UseBindingConfigReturn } from "@/hooks/useBindingConfig";
 import { useMacros } from "@/hooks/useMacros";
 import type { LayoutType } from "@/types";
 import { getLayerDescription } from "@/utils/getLayerDescription";
 
-import type {
-  KeyEditorUIHandlers,
-  MouseHandlers,
-  MouseState,
-  RepeatSettings,
-} from "./UnifiedActionEditor";
-
 const DEFAULT_CURSOR_RETURN_DELAY_MS = 1000;
 
+export type BindingActions = Omit<
+  UseBindingConfigReturn,
+  | "state"
+  | "existingTiming"
+  | "loadBindingForTrigger"
+  | "isCapturing"
+  | "countdown"
+  | "isInputFocused"
+  | "isRecording"
+  | "keyEditorUIHandlers"
+>;
+
 interface ActionSettingsSectionProps {
-  actionType: ActionType;
   selectedTrigger: TriggerType;
-  selectedLayerId: string;
   layers: Layer[];
   layout: LayoutType;
   targetVk: number;
 
-  // Grouped state & handlers
-  mouseState: MouseState;
-  mouseHandlers: MouseHandlers;
-  keyEditorActions: UseKeyEditorActionsReturn;
-  keyEditorUIHandlers: KeyEditorUIHandlers;
-
-  // Repeat Settings
-  repeatSettings: RepeatSettings;
+  // Binding Context (state & handlers)
+  bindingActions: BindingActions;
 
   // Additional handlers
-  setActionType: (type: ActionType) => void;
-  setSelectedLayerId: (id: string) => void;
-
-  // Macro State
-  macroId: string;
-  setMacroId: (id: string) => void;
   onOpenMacros?: () => void;
   currentMacroId?: string;
 
-  // Delay State
-  delayActionMs: number;
-  setDelayActionMs: (ms: number) => void;
+  // Values
+  state: UseBindingConfigReturn["state"];
+  isInputFocused: boolean;
+  isRecording: boolean;
+  keyEditorUIHandlers: UseBindingConfigReturn["keyEditorUIHandlers"];
 }
 
 export function ActionSettingsSection({
-  actionType,
-  selectedTrigger,
-  selectedLayerId,
+  state,
+  bindingActions,
+  currentMacroId,
   layers,
   layout,
-  targetVk,
-  mouseState,
-  mouseHandlers,
-  keyEditorActions,
-  keyEditorUIHandlers,
-  setActionType,
-  setSelectedLayerId,
-  repeatSettings,
-  macroId,
-  setMacroId,
   onOpenMacros,
-  currentMacroId,
-  delayActionMs,
-  setDelayActionMs,
+  selectedTrigger,
+  targetVk,
+  isInputFocused,
+  keyEditorUIHandlers,
 }: ActionSettingsSectionProps) {
   const { macros } = useMacros();
+  const { actionType } = state;
+
+  const {
+    setActionType,
+    setSelectedLayerId,
+    setMacroId,
+    setDelayActionMs,
+    mouseState,
+    mouseHandlers,
+    keyEditorActions,
+    repeatSettings,
+  } = bindingActions;
 
   // マクロ選択肢の作成
   const macroOptions = macros
-    // TODO - 簡略化
     .filter((m) => !isCircularMacro(currentMacroId, m.id, macros))
     .map((m) => ({
       id: m.id,
@@ -99,141 +95,169 @@ export function ActionSettingsSection({
       onActionTypeChange={setActionType}
       triggerType={selectedTrigger}
     >
-      <ActionSelectorContent value="remap">
-        <RemapKeySection
-          keyEditorActions={keyEditorActions}
-          keyEditorUIHandlers={keyEditorUIHandlers}
-          layout={layout}
-          repeatSettings={repeatSettings}
-          selectedTrigger={selectedTrigger}
-          setIsInputFocused={keyEditorUIHandlers.setIsInputFocused}
-          targetVk={targetVk}
-        />
-      </ActionSelectorContent>
-
-      <ActionSelectorContent value={["layerToggle", "layerMomentary"]}>
-        <LayerSelector
-          description={getLayerDescription(actionType)}
-          layers={layers}
-          onLayerChange={setSelectedLayerId}
-          selectedLayerId={selectedLayerId}
-        />
-      </ActionSelectorContent>
-
-      <ActionSelectorContent value="mouseMove">
-        {/* TODO - ActionSelectorContentの改良によってこれをプロパティ化 */}
-        <VStack gap={4}>
-          <p className="text-muted-foreground text-sm">
-            マウスカーソルを指定座標に移動します
-          </p>
-
-          <MousePositionInput
-            idPrefix="mouse"
-            mouseHandlers={mouseHandlers}
-            mouseState={mouseState}
-            setFocused={keyEditorUIHandlers.setIsInputFocused}
-          />
-        </VStack>
-      </ActionSelectorContent>
-
-      <ActionSelectorContent value="mouseClick">
-        <VStack className="w-full justify-center" gap={4}>
-          <p className="text-muted-foreground text-sm">
-            指定座標をクリックします
-          </p>
-
-          <MousePositionInput
-            idPrefix="click"
-            mouseHandlers={mouseHandlers}
-            mouseState={mouseState}
-            setFocused={keyEditorUIHandlers.setIsInputFocused}
-          >
-            <VStack className="h-full justify-around" gap={2}>
-              <ToggleButton
-                className="w-full"
-                labels={{
-                  left: "左クリック",
-                  middle: "中クリック",
-                  right: "右クリック",
-                }}
-                onChange={mouseHandlers.setMouseButton}
-                options={["left", "middle", "right"] as const}
-                value={mouseState.button}
+      {objectiveMergeSwitch(
+        {
+          remap: () => (
+            <ActionSelectorContent value="remap">
+              <RemapKeySection
+                addTargetKey={bindingActions.addTargetKey}
+                handleSave={bindingActions.handleSave}
+                isInputFocused={isInputFocused}
+                keyEditorActions={keyEditorActions}
+                keyEditorUIHandlers={keyEditorUIHandlers}
+                layout={layout}
+                repeatSettings={repeatSettings}
+                selectedTrigger={selectedTrigger}
+                targetVk={targetVk}
               />
-
-              <ToggleButton
-                className="w-full"
-                labels={{
-                  1: "シングル",
-                  2: "ダブル",
-                }}
-                onChange={mouseHandlers.setClickCount}
-                options={[1, 2] as const}
-                value={mouseState.clickCount}
+            </ActionSelectorContent>
+          ),
+          "layerToggle-layerMomentary": (s) => (
+            <ActionSelectorContent value={["layerToggle", "layerMomentary"]}>
+              <LayerSelector
+                description={getLayerDescription(actionType)}
+                layers={layers}
+                onLayerChange={setSelectedLayerId}
+                selectedLayerId={s.selectedLayerId}
               />
-            </VStack>
-          </MousePositionInput>
-        </VStack>
-      </ActionSelectorContent>
+            </ActionSelectorContent>
+          ),
+          mouseMove: () => (
+            <ActionSelectorContent value="mouseMove">
+              <VStack gap={4}>
+                <p className="text-muted-foreground text-sm">
+                  マウスカーソルを指定座標に移動します
+                </p>
 
-      <ActionSelectorContent value="cursorReturn">
-        <VStack gap={4}>
-          <p className="text-muted-foreground text-sm">
-            キー押下時のカーソル位置を記録し、指定時間後に戻ります
-          </p>
+                <MousePositionInput
+                  idPrefix="mouse"
+                  mouseHandlers={mouseHandlers}
+                  mouseState={mouseState}
+                  setFocused={keyEditorUIHandlers.setIsInputFocused}
+                />
+              </VStack>
+            </ActionSelectorContent>
+          ),
+          mouseClick: () => (
+            <ActionSelectorContent value="mouseClick">
+              <VStack className="w-full justify-center" gap={4}>
+                <p className="text-muted-foreground text-sm">
+                  指定座標をクリックします
+                </p>
 
-          <TimingInput
-            defaultValue={DEFAULT_CURSOR_RETURN_DELAY_MS}
-            id="cursorReturnDelay"
-            label="遅延時間 (ms)"
-            onValueChange={(val) =>
-              val !== undefined && mouseHandlers.setCursorReturnDelayMs(val)
-            }
-            setFocused={keyEditorUIHandlers.setIsInputFocused}
-            value={mouseState.cursorReturnDelayMs}
-          />
-        </VStack>
-      </ActionSelectorContent>
+                <MousePositionInput
+                  idPrefix="click"
+                  mouseHandlers={mouseHandlers}
+                  mouseState={mouseState}
+                  setFocused={keyEditorUIHandlers.setIsInputFocused}
+                >
+                  <VStack className="h-full justify-around" gap={2}>
+                    <ToggleButton
+                      className="w-full"
+                      labels={{
+                        left: "左クリック",
+                        middle: "中クリック",
+                        right: "右クリック",
+                      }}
+                      onChange={mouseHandlers.setMouseButton}
+                      options={["left", "middle", "right"] as const}
+                      value={mouseState.button}
+                    />
 
-      <ActionSelectorContent value="macro">
-        <VStack gap={4}>
-          <p className="text-muted-foreground text-sm">
-            事前に定義したマクロ（一連の操作）を実行します
-          </p>
-          <HStack className="items-end" gap={2}>
-            <div className="flex-1">
-              <Select
-                id="macroSelect"
-                label="マクロを選択"
-                onValueChange={setMacroId}
-                options={macroOptions}
-                select-value={macroId}
-              />
-            </div>
-            <Show condition={!!onOpenMacros}>
-              <Button onClick={onOpenMacros} variant="secondary">
-                マクロを管理
-              </Button>
-            </Show>
-          </HStack>
-        </VStack>
-      </ActionSelectorContent>
+                    <ToggleButton
+                      className="w-full"
+                      labels={{
+                        1: "シングル",
+                        2: "ダブル",
+                      }}
+                      onChange={mouseHandlers.setClickCount}
+                      options={[1, 2] as const}
+                      value={mouseState.clickCount}
+                    />
+                  </VStack>
+                </MousePositionInput>
+              </VStack>
+            </ActionSelectorContent>
+          ),
+          cursorReturn: () => (
+            <ActionSelectorContent value="cursorReturn">
+              <VStack gap={4}>
+                <p className="text-muted-foreground text-sm">
+                  キー押下時のカーソル位置を記録し、指定時間後に戻ります
+                </p>
 
-      <ActionSelectorContent value="delay">
-        <VStack gap={4}>
-          <p className="text-muted-foreground text-sm">
-            指定した時間（ミリ秒）待機します
-          </p>
-          <TimingInput
-            defaultValue={500}
-            id="delayActionInput"
-            label="待機時間 (ms)"
-            onValueChange={(val) => val !== undefined && setDelayActionMs(val)}
-            setFocused={keyEditorUIHandlers.setIsInputFocused}
-            value={delayActionMs}
-          />
-        </VStack>
-      </ActionSelectorContent>
+                <TimingInput
+                  defaultValue={DEFAULT_CURSOR_RETURN_DELAY_MS}
+                  id="cursorReturnDelay"
+                  label="遅延時間 (ms)"
+                  onValueChange={(val) =>
+                    val !== undefined &&
+                    mouseHandlers.setCursorReturnDelayMs(val)
+                  }
+                  setFocused={keyEditorUIHandlers.setIsInputFocused}
+                  value={mouseState.cursorReturnDelayMs}
+                />
+              </VStack>
+            </ActionSelectorContent>
+          ),
+          macro: (s) => (
+            <ActionSelectorContent value="macro">
+              <VStack gap={4}>
+                <p className="text-muted-foreground text-sm">
+                  事前に定義したマクロ（一連の操作）を実行します
+                </p>
+                <HStack className="items-end" gap={2}>
+                  <div className="flex-1">
+                    <Select
+                      id="macroSelect"
+                      label="マクロを選択"
+                      onValueChange={setMacroId}
+                      options={macroOptions}
+                      select-value={s.macroId}
+                    />
+                  </div>
+                  <Show condition={!!onOpenMacros}>
+                    <Button onClick={onOpenMacros} variant="secondary">
+                      マクロを管理
+                    </Button>
+                  </Show>
+                </HStack>
+              </VStack>
+            </ActionSelectorContent>
+          ),
+          delay: (s) => (
+            <ActionSelectorContent value="delay">
+              <VStack gap={4}>
+                <p className="text-muted-foreground text-sm">
+                  指定した時間（ミリ秒）待機します
+                </p>
+                <TimingInput
+                  defaultValue={500}
+                  id="delayActionInput"
+                  label="待機時間 (ms)"
+                  onValueChange={(val) =>
+                    val !== undefined && setDelayActionMs(val)
+                  }
+                  setFocused={keyEditorUIHandlers.setIsInputFocused}
+                  value={s.delayActionMs}
+                />
+              </VStack>
+            </ActionSelectorContent>
+          ),
+        },
+        state,
+        "actionType",
+        {
+          remap: "remap",
+          layerToggle: "layerToggle-layerMomentary",
+          layerMomentary: "layerToggle-layerMomentary",
+          mouseMove: "mouseMove",
+          mouseClick: "mouseClick",
+          cursorReturn: "cursorReturn",
+          delay: "delay",
+          macro: "macro",
+        }
+      )}
     </ActionSelector>
   );
 }

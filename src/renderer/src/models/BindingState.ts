@@ -1,56 +1,53 @@
-import type { Action } from "@shared/types/remapConfig";
+import type { Action, ActionType } from "@shared/types/remapConfig";
 import { objectiveDiscriminantSwitch } from "@shared/utils/objectiveSwitch";
 
-interface BindingStateBase {
-  targetKeys: number[];
-  selectedLayerId: string;
-  hasExistingBinding: boolean;
-}
-
-export interface RemapBindingState extends BindingStateBase {
+export interface RemapBindingState {
   actionType: "remap";
+  targetKeys: number[];
   repeat?: boolean;
   repeatDelayMs?: number;
   repeatIntervalMs?: number;
 }
 
-export interface LayerToggleBindingState extends BindingStateBase {
+export interface LayerToggleBindingState {
   actionType: "layerToggle";
+  selectedLayerId: string;
 }
 
-export interface LayerMomentaryBindingState extends BindingStateBase {
+export interface LayerMomentaryBindingState {
   actionType: "layerMomentary";
+  selectedLayerId: string;
 }
 
-export interface MouseMoveBindingState extends BindingStateBase {
+export interface MouseMoveBindingState {
   actionType: "mouseMove";
-  mouseX: number;
-  mouseY: number;
+  mouseX?: number;
+  mouseY?: number;
 }
 
-export interface MouseClickBindingState extends BindingStateBase {
+export interface MouseClickBindingState {
   actionType: "mouseClick";
-  mouseX: number;
-  mouseY: number;
+  mouseX?: number;
+  mouseY?: number;
   mouseButton: "left" | "right" | "middle";
   clickCount: number;
 }
 
-export interface NoneBindingState extends BindingStateBase {
+export interface NoneBindingState {
   actionType: "none";
 }
 
-export interface CursorReturnBindingState extends BindingStateBase {
+export interface CursorReturnBindingState {
   actionType: "cursorReturn";
   cursorReturnDelayMs: number;
 }
 
-export interface DelayBindingState extends BindingStateBase {
+export interface DelayBindingState {
   actionType: "delay";
   delayActionMs: number;
 }
 
-export interface MacroBindingState extends BindingStateBase {
+export interface MacroBindingState {
   actionType: "macro";
   macroId: string;
 }
@@ -69,15 +66,15 @@ export type BindingState =
 /**
  * ActionからBindingStateへ変換
  */
-export function actionToBindingState(action: Action): Partial<BindingState> {
-  return objectiveDiscriminantSwitch<Action, "type", Partial<BindingState>>(
+export function actionToBindingState(action: Action): BindingState {
+  return objectiveDiscriminantSwitch<Action, "type", BindingState>(
     {
       remap: (act) => ({
         actionType: "remap",
         targetKeys: act.keys,
-        repeat: act.repeat,
-        repeatDelayMs: act.repeatDelayMs,
-        repeatIntervalMs: act.repeatIntervalMs,
+        repeat: act.repeat ?? false,
+        repeatDelayMs: act.repeatDelayMs ?? DEFAULT_REPEAT_DELAY_MS,
+        repeatIntervalMs: act.repeatIntervalMs ?? DEFAULT_REPEAT_INTERVAL_MS,
       }),
       layerToggle: (act) => ({
         actionType: "layerToggle",
@@ -89,13 +86,13 @@ export function actionToBindingState(action: Action): Partial<BindingState> {
       }),
       mouseMove: (act) => ({
         actionType: "mouseMove",
-        mouseX: act.x,
-        mouseY: act.y,
+        mouseX: act.x ?? 0,
+        mouseY: act.y ?? 0,
       }),
       mouseClick: (act) => ({
         actionType: "mouseClick",
-        mouseX: act.x,
-        mouseY: act.y,
+        mouseX: act.x ?? 0,
+        mouseY: act.y ?? 0,
         mouseButton: act.button,
         clickCount: act.clickCount ?? 1,
       }),
@@ -142,15 +139,15 @@ export function convertBindingStateToAction(state: BindingState): Action {
       }),
       mouseClick: (s) => ({
         type: "mouseClick",
-        x: s.mouseX,
-        y: s.mouseY,
+        x: s.mouseX ?? 0,
+        y: s.mouseY ?? 0,
         button: s.mouseButton,
         clickCount: s.clickCount,
       }),
       mouseMove: (s) => ({
         type: "mouseMove",
-        x: s.mouseX,
-        y: s.mouseY,
+        x: s.mouseX ?? 0,
+        y: s.mouseY ?? 0,
       }),
       cursorReturn: (s) => ({
         type: "cursorReturn",
@@ -164,19 +161,89 @@ export function convertBindingStateToAction(state: BindingState): Action {
   );
 }
 
+// Constants (moved from useBindingConfig)
+const DEFAULT_REPEAT_DELAY_MS = 500;
+const DEFAULT_REPEAT_INTERVAL_MS = 100;
+const DEFAULT_DELAY_MS = 500;
+const DEFAULT_CURSOR_RETURN_DELAY_MS = 1000;
+const DEFAULT_LAYER_ID = "base";
+
+/**
+ * アクションタイプ切り替え時の初期状態を生成
+ */
+export function getInitialStateForType(type: ActionType): BindingState {
+  switch (type) {
+    case "remap":
+      return {
+        actionType: "remap",
+        repeat: false,
+        targetKeys: [],
+        repeatDelayMs: DEFAULT_REPEAT_DELAY_MS,
+        repeatIntervalMs: DEFAULT_REPEAT_INTERVAL_MS,
+      };
+    case "layerToggle":
+      return {
+        actionType: "layerToggle",
+        selectedLayerId: DEFAULT_LAYER_ID,
+      };
+    case "layerMomentary":
+      return {
+        actionType: "layerMomentary",
+        selectedLayerId: DEFAULT_LAYER_ID,
+      };
+    case "mouseMove":
+      return {
+        actionType: "mouseMove",
+        mouseX: 0,
+        mouseY: 0,
+      };
+    case "mouseClick":
+      return {
+        actionType: "mouseClick",
+        mouseX: 0,
+        mouseY: 0,
+        mouseButton: "left",
+        clickCount: 1,
+      };
+    case "cursorReturn":
+      return {
+        actionType: "cursorReturn",
+        cursorReturnDelayMs: DEFAULT_CURSOR_RETURN_DELAY_MS,
+      };
+    case "delay":
+      return {
+        actionType: "delay",
+        delayActionMs: DEFAULT_DELAY_MS,
+      };
+    case "macro":
+      return { actionType: "macro", macroId: "" };
+    case "none":
+      return { actionType: "none" };
+    default:
+      return { actionType: "none" };
+  }
+}
+
+/**
+ * Actionから完全なBindingStateを生成（デフォルト値補完付き）
+ */
+export function createBindingStateFromAction(action: Action): BindingState {
+  const partial = actionToBindingState(action);
+
+  const typeBase = getInitialStateForType(partial.actionType);
+  return { ...typeBase, ...partial } as BindingState;
+}
+
 /**
  * 初期BindingStateを作成
  */
-export function createInitialBindingState(
-  defaultLayerId: string
-): BindingState {
+export function createInitialBindingState(): BindingState {
   return {
     actionType: "remap",
     targetKeys: [],
-    selectedLayerId: defaultLayerId,
-    hasExistingBinding: false,
+
     repeat: false,
-    repeatDelayMs: 500,
-    repeatIntervalMs: 100,
+    repeatDelayMs: DEFAULT_REPEAT_DELAY_MS,
+    repeatIntervalMs: DEFAULT_REPEAT_INTERVAL_MS,
   };
 }

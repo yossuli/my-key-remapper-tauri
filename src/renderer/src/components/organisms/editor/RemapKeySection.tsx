@@ -9,12 +9,12 @@ import { TimingInput } from "@/components/molecules/forms/TimingInput";
 import { HStack, VStack } from "@/components/template/Flex";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import type { UseKeyEditorActionsReturn } from "@/hooks/useKeyEditorAction";
-import type { LayoutType } from "@/types";
 import type {
   KeyEditorUIHandlers,
   RepeatSettings,
-} from "./UnifiedActionEditor";
+} from "@/hooks/useBindingConfig";
+import type { UseKeyEditorActionsReturn } from "@/hooks/useKeyEditorAction";
+import type { LayoutType } from "@/types";
 
 interface RemapKeySectionProps {
   targetVk: number;
@@ -26,17 +26,20 @@ interface RemapKeySectionProps {
   // リピート設定
   selectedTrigger: TriggerType;
   repeatSettings: RepeatSettings;
-  setIsInputFocused: (focused: boolean) => void;
+
+  // 追加されたハンドラー
+  isInputFocused: boolean;
+  handleSave: () => void;
+  addTargetKey: (keyCode: number) => void;
 }
 
 export function RemapKeySection({
   targetVk,
   layout,
   keyEditorActions,
-  keyEditorUIHandlers,
+  keyEditorUIHandlers:{ setIsInputFocused,setIsRecording },
   selectedTrigger,
   repeatSettings,
-  setIsInputFocused,
 }: RemapKeySectionProps) {
   const { keys, setKeys, reset } = keyEditorActions;
   const { repeat, repeatDelayMs, repeatIntervalMs, onRepeatChange } =
@@ -53,8 +56,9 @@ export function RemapKeySection({
           isCaptureEnabled={true}
           isRemoveDisabled={() => keys.length === 1}
           layout={layout}
+          onCaptureActiveChange={setIsRecording}
           onClear={reset}
-          onInputFocusChange={keyEditorUIHandlers.setIsInputFocused}
+          onInputFocusChange={setIsInputFocused}
           onKeysChange={setKeys}
         />
       </HStack>

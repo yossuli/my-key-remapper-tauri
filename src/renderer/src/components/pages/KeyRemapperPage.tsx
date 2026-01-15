@@ -3,7 +3,7 @@ import type { TriggerType } from "@shared/types/remapConfig";
 import { useMemo, useState } from "react";
 import { Show } from "@/components/control/Show";
 import { AppHeader } from "@/components/organisms/AppHeader";
-import { KeyEditorForm } from "@/components/organisms/editor/KeyEditorForm";
+import { UnifiedActionEditor } from "@/components/organisms/editor/UnifiedActionEditor";
 import { GlobalSettingsForm } from "@/components/organisms/GlobalSettingsForm";
 import { KeyRemapSection } from "@/components/organisms/KeyRemapSection";
 import { LayerStatusPanel } from "@/components/organisms/LayerStatusPanel";
@@ -63,7 +63,7 @@ export function KeyRemapperPage({ onNavigateMacros }: KeyRemapperPageProps) {
     setLayout((prev) => SWITCH_LAYOUT_RULE[prev]);
   };
 
-  const handleCloseEditor = () => {
+  const handleEditorClose = () => {
     remapActions.enableRemap();
     setEditingKey(null);
   };
@@ -95,11 +95,11 @@ export function KeyRemapperPage({ onNavigateMacros }: KeyRemapperPageProps) {
               layerState={layerState} // 📦 → 🎁 (A. Layer Management Flow)
               layout={layout} // 🆕 → 🚌 (C. UI Configuration)
               mappingActions={mappingActions} // 📦 → 🎁 (B. Mapping & Remap Actions)
-              onLayoutToggle={toggleLayout} // 🆕 → 🚌 (D. Event Handlers)
-              onTriggerChange={setSelectedTrigger} // 🆕 → 🚌 (D. Event Handlers)
-              remapActions={remapActions} // 📦 → 🎁 (B. Mapping & Remap Actions)
-              selectedTrigger={selectedTrigger} // 🆕 → 🚌🔥 (C. UI Configuration)
-              setEditingKey={setEditingKey} // 🆕 → 🚌 (D. Event Handlers)
+              remapActions={remapActions} // 🆕 → 🚌 (D. Event Handlers)
+              selectedTrigger={selectedTrigger} // 🆕 → 🚌 (D. Event Handlers)
+              setEditingKey={setEditingKey} // 📦 → 🎁 (B. Mapping & Remap Actions)
+              setSelectedTrigger={setSelectedTrigger} // 🆕 → 🚌🔥 (C. UI Configuration)
+              toggleLayout={toggleLayout} // 🆕 → 🚌 (D. Event Handlers)
             />
           </Show>
         </Main>
@@ -117,18 +117,33 @@ export function KeyRemapperPage({ onNavigateMacros }: KeyRemapperPageProps) {
         </Side>
       </MainLayout>
 
-      <ModalLayout onClose={handleCloseEditor} value={editingKey}>
+      <ModalLayout onClose={handleEditorClose} value={editingKey}>
         {(e) => (
-          <KeyEditorForm
+          <UnifiedActionEditor
+            handleEditorClose={handleEditorClose} // 🆕 → 🧩🔥 (C. UI Configuration)
+            initialTrigger={selectedTrigger} // ∈ → 🧩🔥 (A. Layer Management Flow)
             layerId={layerId} // ∈ → 🧩🔥 (A. Layer Management Flow)
-            layers={layers} // ∈ → 🧩🔥 (A. Layer Management Flow)
-            layout={layout} // 🆕 → 🧩🔥 (C. UI Configuration)
-            onClose={handleCloseEditor} // 🆕 → 🔥 (I. Key Editor Modal)
+            layers={layers} // 🆕 → 🧩🔥 (C. UI Configuration)
+            layout={layout} // 🆕 → 🔥 (I. Key Editor Modal)
             onOpenMacros={onNavigateMacros}
-            onRemove={(trigger) => removeMapping(e, trigger)} // 🆕 → 🔥 (I. Key Editor Modal)
-            onSave={saveMapping(e)} // 🆕 → 🔥 (I. Key Editor Modal)
+            onRemove={() => removeMapping(e, selectedTrigger)} // 🆕 → 🔥 (I. Key Editor Modal)
+            onSave={(action, timing, activeTrigger) => {
+              // activeTrigger が不明な場合は選択中のトリガーを使用
+              const currentTrigger = activeTrigger || selectedTrigger;
+
+              // Timing Mapping
+              let timingVal: number | undefined | null;
+              if (timing) {
+                if (currentTrigger === "hold") {
+                  timingVal = timing.hold;
+                } else if (currentTrigger === "doubleTap") {
+                  timingVal = timing.doubleTap;
+                }
+              }
+
+              saveMapping(e)(currentTrigger, action, timingVal);
+            }} // 🆕 → 🔥 (I. Key Editor Modal)
             targetVk={e} // 🆕 → 🔥 (I. Key Editor Modal)
-            trigger={selectedTrigger} // 🆕 → 🧩🔥 (C. UI Configuration)
           />
         )}
       </ModalLayout>

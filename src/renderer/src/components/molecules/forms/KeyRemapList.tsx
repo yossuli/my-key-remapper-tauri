@@ -1,5 +1,5 @@
 import { Check, Plus } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "@/components/atoms/Button";
 import { Icon } from "@/components/atoms/Icon";
 import { HStack, VStack } from "@/components/template/Flex";
@@ -20,6 +20,7 @@ export interface KeyRemapListProps {
   className?: string;
   requireExplicitAdd?: boolean;
   ignoredKeys?: number[];
+  onCaptureActiveChange?: (active: boolean) => void;
 }
 
 /**
@@ -36,19 +37,32 @@ export function KeyRemapList({
   className,
   requireExplicitAdd = false,
   ignoredKeys = [],
+  onCaptureActiveChange,
 }: KeyRemapListProps) {
   const [showVkInput, setShowVkInput] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
 
+  // useEventHandler の enabled 判定などで参照するために再定義
   const isCaptureActive =
     isCaptureEnabled && (!requireExplicitAdd || isCapturing);
 
+  const handleCaptureChange = useCallback(
+    (capturing: boolean) => {
+      setIsCapturing(capturing);
+      const active = isCaptureEnabled && (!requireExplicitAdd || capturing);
+      onCaptureActiveChange?.(active);
+    },
+    [isCaptureEnabled, requireExplicitAdd, onCaptureActiveChange]
+  );
+
   // 内部でキャプチャロジックを管理
-  const { keys, addKey, removeKey, onKeyDown, onKeyUp } = useKeyCapture({
-    initialKeys,
-    onKeysChange,
-  });
+  // useKeyCapture は内部ステートを持たず、完全に props (initialKeys) に依存して動作する
+  const { holds, inputKey, removeKey, onKeyDown, onKeyUp, reset } =
+    useKeyCapture({
+      currentKeys: initialKeys,
+      onKeysChange,
+    });
 
   // グローバルイベントの監視も内包（数値入力中は停止する）
   useKeyEventInput({
@@ -72,7 +86,7 @@ export function KeyRemapList({
       <HStack className="flex-wrap justify-center font-bold text-xl" gap={4}>
         <KeyRemapItems
           isRemoveDisabled={isRemoveDisabled}
-          keys={keys}
+          keys={initialKeys}
           layout={layout}
           onRemoveKey={removeKey}
           showVkInput={showVkInput}
@@ -81,7 +95,7 @@ export function KeyRemapList({
         {!!requireExplicitAdd && (
           <Button
             className={isCapturing ? "animate-pulse gap-2" : "gap-2"}
-            onClick={() => setIsCapturing(!isCapturing)}
+            onClick={() => handleCaptureChange(!isCapturing)}
             variant={isCapturing ? "default" : "outline"}
           >
             {isCapturing ? <Icon icon={Check} /> : <Icon icon={Plus} />}
@@ -89,12 +103,15 @@ export function KeyRemapList({
           </Button>
         )}
 
-        {keys.length > 0 && (
-          <Button label="クリア" onClick={onClear} variant="ghost" />
+        {initialKeys.length > 0 && (
+          <Button label="クリア" onClick={() => {
+            reset();
+            onClear?.();
+          }} variant="ghost" />
         )}
       </HStack>
       <VkDirectInput
-        onAddKey={addKey}
+        onAddKey={inputKey}
         onFocusChange={handleInputFocus}
         onOpenChange={setShowVkInput}
       />

@@ -11,7 +11,6 @@ import type { UseLayerStateReturn } from "./useLayerState";
 
 export interface UseQuickRemapOptions {
   enabled: boolean;
-  hasExistingBinding: boolean;
   selectedLayerId: string;
   selectedTrigger: TriggerType;
   targetKeys: number[];
@@ -37,7 +36,6 @@ export function useQuickRemap({
   enabled,
   selectedTrigger,
   onSaveMapping,
-  hasExistingBinding,
   selectedLayerId,
   targetKeys,
   keyboardLayout,
@@ -45,21 +43,19 @@ export function useQuickRemap({
   const [editingKey, setEditingKey] =
     useState<UseQuickRemapReturn["editingKey"]>(null);
 
-  const { canSave, holds, addHoldKey, removeHoldKey, handleSave } =
+  const { canSave, holds, addHoldKey, removeHoldKey, handleSave, reset } =
     useKeyEditorActions({
       state: {
         actionType: "remap",
-        selectedLayerId,
         targetKeys,
-        hasExistingBinding,
       },
       layerId: selectedLayerId,
       targetVk: editingKey,
       selectedTrigger,
-      onSave: (trigger: TriggerType, action: Action) => {
+      onSave: (_trigger: TriggerType, action: Action) => {
         if (editingKey !== null) {
-          console.log("save", editingKey, trigger, action);
-          onSaveMapping(editingKey)(trigger, action);
+          console.log("save", editingKey, selectedTrigger, action);
+          onSaveMapping(editingKey)(selectedTrigger, action);
         }
       },
     });
@@ -96,6 +92,7 @@ export function useQuickRemap({
       if (holds.length === 1 && holds[0] === vkCode) {
         if (canSave) {
           handleSave();
+          reset(); // 保存後に確実にステートをクリア（これが「入力が残る」バグの修正）
         }
         // 次のキーに移動（行末なら null で編集終了）
         if (editingKey !== null) {

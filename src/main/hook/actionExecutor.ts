@@ -84,10 +84,15 @@ export async function executeActionInternal(
       break;
 
     case "mouseMove":
-      moveMouse(action.x, action.y);
+      moveMouse(action.x ?? 0, action.y ?? 0);
       break;
     case "mouseClick":
-      clickAt(action.x, action.y, action.button, action.clickCount ?? 1);
+      clickAt(
+        action.x ?? 0,
+        action.y ?? 0,
+        action.button,
+        action.clickCount ?? 1
+      );
       break;
     case "layerToggle":
       remapRules.setLayer(action.layerId);

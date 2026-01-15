@@ -66,8 +66,8 @@ interface KeyRemapSectionProps {
   keyboardLayout: KeyboardLayout;
   bindings: Record<number, KeyBinding[]>;
   selectedTrigger: TriggerType;
-  onLayoutToggle: () => void;
-  onTriggerChange: (trigger: TriggerType) => void;
+  toggleLayout: () => void;
+  setSelectedTrigger: (trigger: TriggerType) => void;
   setEditingKey: Dispatch<SetStateAction<number | null>>;
 }
 
@@ -80,8 +80,8 @@ export function KeyRemapSection({
   keyboardLayout, // 🚌 → 🚌 (C. UI Configuration)
   bindings, // 🚌 → 🚌 (C. UI Configuration)
   selectedTrigger, // 🚌🔥 → 🚌🔥 (C. UI Configuration)
-  onLayoutToggle, // 🚌 → 🔥 (D. Event Handlers)
-  onTriggerChange, // 🚌 → 🔥 (D. Event Handlers)
+  toggleLayout, // 🚌 → 🔥 (D. Event Handlers)
+  setSelectedTrigger, // 🚌 → 🔥 (D. Event Handlers)
   setEditingKey, // 🚌 → 🔥 (D. Event Handlers)
 }: KeyRemapSectionProps) {
   const [isQuickEditMode, setIsQuickEditMode] = useState(false);
@@ -90,7 +90,6 @@ export function KeyRemapSection({
   const { editingKey: quickEditingKey, startEditing: startQuickEditing } =
     useQuickRemap({
       enabled: isQuickEditMode,
-      hasExistingBinding: false,
       selectedLayerId: layerState.layerId,
       targetKeys: [],
       selectedTrigger,
@@ -133,7 +132,7 @@ export function KeyRemapSection({
         {/* 🎁 → 🔨🔥 (A. Layer Management Flow) */}
         <HStack className="gap-2">
           <TriggerTabs
-            onTriggerChange={onTriggerChange} // 🚌 → 🔥 (D. Event Handlers)
+            onTriggerChange={setSelectedTrigger} // 🚌 → 🔥 (D. Event Handlers)
             selectedTrigger={selectedTrigger} // 🚌🔥 → 🔥 (C. UI Configuration)
             size="compact"
           />
@@ -168,7 +167,7 @@ export function KeyRemapSection({
           <Icon className="opacity-70" icon={Settings} size="md" />
           Keyboard Layout: {layout}
         </h2>
-        <LayoutToggle currentLayout={layout} onToggle={onLayoutToggle} />{" "}
+        <LayoutToggle currentLayout={layout} onToggle={toggleLayout} />{" "}
         {/* 🚌 → 🔥 (D. Event Handlers) */}
       </div>
     </VStack>
