@@ -4,7 +4,7 @@ import { Input } from "@/components/atoms/Input";
 import type {
   MouseHandlers,
   MouseState,
-} from "@/components/organisms/editor/KeyEditorForm";
+} from "@/components/organisms/editor/UnifiedActionEditor";
 import { Center, VStack } from "@/components/template/Flex";
 import { useScreenSize } from "@/hooks/useScreenSize";
 

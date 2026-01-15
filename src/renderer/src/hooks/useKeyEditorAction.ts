@@ -27,7 +27,7 @@ export interface UseKeyEditorActionsReturn {
   removeKey: (vk: number) => void;
   reset: () => void;
   handleSave: () => void;
-  handleRemove: () => void;
+  handleRemove?: () => void; // Updated to optional per refactor
 
   addHoldKey: (vk: number) => void;
   removeHoldKey: (vk: number) => void;
@@ -162,9 +162,7 @@ export function useKeyEditorActions({
     onClose?.();
   }, [state, keys, selectedTrigger, onClose, onSave, canSave]);
 
-  const handleRemove = useCallback<
-    UseKeyEditorActionsReturn["handleRemove"]
-  >(() => {
+  const handleRemove = useCallback(() => {
     onRemove?.(selectedTrigger);
     onClose?.();
   }, [onClose, onRemove, selectedTrigger]);

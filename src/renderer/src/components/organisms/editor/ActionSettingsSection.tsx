@@ -3,6 +3,7 @@ import { isCircularMacro } from "@shared/utils/macroUtils";
 import { Button } from "@/components/atoms/Button";
 import { Select } from "@/components/atoms/Select";
 import { ToggleButton } from "@/components/atoms/ToggleButton";
+import { Show } from "@/components/control/Show";
 import {
   ActionSelector,
   ActionSelectorContent,
@@ -16,12 +17,13 @@ import type { UseKeyEditorActionsReturn } from "@/hooks/useKeyEditorAction";
 import { useMacros } from "@/hooks/useMacros";
 import type { LayoutType } from "@/types";
 import { getLayerDescription } from "@/utils/getLayerDescription";
+
 import type {
   KeyEditorUIHandlers,
   MouseHandlers,
   MouseState,
   RepeatSettings,
-} from "./KeyEditorForm";
+} from "./UnifiedActionEditor";
 
 const DEFAULT_CURSOR_RETURN_DELAY_MS = 1000;
 
@@ -49,7 +51,7 @@ interface ActionSettingsSectionProps {
   // Macro State
   macroId: string;
   setMacroId: (id: string) => void;
-  onOpenMacros: () => void;
+  onOpenMacros?: () => void;
   currentMacroId?: string;
 
   // Delay State
@@ -208,9 +210,11 @@ export function ActionSettingsSection({
                 select-value={macroId}
               />
             </div>
-            <Button onClick={onOpenMacros} variant="secondary">
-              マクロを管理
-            </Button>
+            <Show condition={!!onOpenMacros}>
+              <Button onClick={onOpenMacros} variant="secondary">
+                マクロを管理
+              </Button>
+            </Show>
           </HStack>
         </VStack>
       </ActionSelectorContent>

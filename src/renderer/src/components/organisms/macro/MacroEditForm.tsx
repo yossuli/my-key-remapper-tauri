@@ -6,11 +6,11 @@ import { Icon } from "@/components/atoms/Icon";
 import { Input } from "@/components/atoms/Input";
 import { Show } from "@/components/control/Show";
 import { SequenceEditor } from "@/components/organisms/editor/SequenceEditor";
+import { UnifiedActionEditor } from "@/components/organisms/editor/UnifiedActionEditor";
 import { HStack, VStack } from "@/components/template/Flex";
 import { ModalLayout } from "@/components/template/ModalLayout";
 import { useLayerState } from "@/hooks/useLayerState";
 import { useRemapControl } from "@/hooks/useRemapControl";
-import { ActionStepEditor } from "./ActionStepEditor";
 import type { ActionSummaryHandlers, IdentifiedAction } from "./types";
 import { toAction, toIdentifiedAction } from "./utils";
 
@@ -145,13 +145,13 @@ export function MacroEditForm({
         value={isAdding || editingIndex !== null}
       >
         {() => (
-          <ActionStepEditor
+          <UnifiedActionEditor
             currentMacroId={macroId}
             initialAction={initialAction}
-            layers={layers} // TODO: レイアウトをページから引き継ぐ
-            layout="JIS"
+            layers={layers}
+            layout="JIS" // TODO: レイアウトをページから引き継ぐ
             onCancel={handleCloseModal}
-            onSave={handleSaveStep}
+            onSave={(action) => handleSaveStep(action)}
           />
         )}
       </ModalLayout>
