@@ -1,5 +1,3 @@
-﻿// ActionからBindingStateへの変換ユーティリティ
-
 import type { Action } from "@shared/types/remapConfig";
 import { objectiveDiscriminantSwitch } from "@shared/utils/objectiveSwitch";
 
@@ -117,6 +115,52 @@ export function actionToBindingState(action: Action): Partial<BindingState> {
     },
     action,
     "type"
+  );
+}
+
+/**
+ * BindingStateからActionへ変換
+ */
+export function convertBindingStateToAction(state: BindingState): Action {
+  return objectiveDiscriminantSwitch<BindingState, "actionType", Action>(
+    {
+      remap: (s) => ({
+        type: "remap",
+        keys: s.targetKeys,
+        repeat: s.repeat,
+        repeatDelayMs: s.repeatDelayMs,
+        repeatIntervalMs: s.repeatIntervalMs,
+      }),
+      macro: (s) => ({ type: "macro", macroId: s.macroId }),
+      layerToggle: (s) => ({
+        type: "layerToggle",
+        layerId: s.selectedLayerId,
+      }),
+      layerMomentary: (s) => ({
+        type: "layerMomentary",
+        layerId: s.selectedLayerId,
+      }),
+      mouseClick: (s) => ({
+        type: "mouseClick",
+        x: s.mouseX,
+        y: s.mouseY,
+        button: s.mouseButton,
+        clickCount: s.clickCount,
+      }),
+      mouseMove: (s) => ({
+        type: "mouseMove",
+        x: s.mouseX,
+        y: s.mouseY,
+      }),
+      cursorReturn: (s) => ({
+        type: "cursorReturn",
+        delayMs: s.cursorReturnDelayMs,
+      }),
+      delay: (s) => ({ type: "delay", delayMs: s.delayActionMs }),
+      none: () => ({ type: "none" }),
+    },
+    state,
+    "actionType"
   );
 }
 

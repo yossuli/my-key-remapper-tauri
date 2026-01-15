@@ -1,9 +1,11 @@
 ﻿// 保存・削除アクションのフック
 
 import type { Action, TriggerType } from "@shared/types/remapConfig";
-import { objectiveDiscriminantSwitch } from "@shared/utils/objectiveSwitch";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { BindingState } from "@/utils/bindingState";
+import {
+  type BindingState,
+  convertBindingStateToAction,
+} from "@/models/BindingState";
 
 export interface UseKeyEditorActionsProps {
   state: BindingState;
@@ -113,50 +115,7 @@ export function useKeyEditorActions({
       return;
     }
 
-    const action: Action = objectiveDiscriminantSwitch<
-      BindingState,
-      "actionType",
-      Action
-    >(
-      {
-        remap: () => ({ type: "remap", keys }),
-        layerToggle: (s) => ({
-          type: "layerToggle",
-          layerId: s.selectedLayerId,
-        }),
-        layerMomentary: (s) => ({
-          type: "layerMomentary",
-          layerId: s.selectedLayerId,
-        }),
-        mouseMove: (s) => ({
-          type: "mouseMove",
-          x: s.mouseX,
-          y: s.mouseY,
-        }),
-        mouseClick: (s) => ({
-          type: "mouseClick",
-          x: s.mouseX,
-          y: s.mouseY,
-          button: s.mouseButton,
-          clickCount: s.clickCount,
-        }),
-        cursorReturn: (s) => ({
-          type: "cursorReturn",
-          delayMs: s.cursorReturnDelayMs,
-        }),
-        delay: (s) => ({
-          type: "delay",
-          delayMs: s.delayActionMs,
-        }),
-        macro: (s) => ({
-          type: "macro",
-          macroId: s.macroId,
-        }),
-        none: () => ({ type: "none" }),
-      },
-      state,
-      "actionType"
-    );
+    const action = convertBindingStateToAction(state);
 
     onSave(selectedTrigger, action);
     onClose?.();

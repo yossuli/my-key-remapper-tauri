@@ -1,15 +1,9 @@
 ﻿import type { Action, Layer, TriggerType } from "@shared/types/remapConfig";
-import { objectiveDiscriminantSwitch } from "@shared/utils/objectiveSwitch";
 import { useMemo } from "react";
 import { UnifiedActionEditor } from "@/components/organisms/editor/UnifiedActionEditor";
 import { useBindingConfig } from "@/hooks/useBindingConfig";
+import { convertBindingStateToAction } from "@/models/BindingState";
 import type { LayoutType } from "@/types";
-
-const _DEFAULT_HOLD_THRESHOLD_MS = 200;
-const _DEFAULT_TAP_INTERVAL_MS = 300;
-const _DEFAULT_REPEAT_DELAY_MS = 500;
-const _DEFAULT_REPEAT_INTERVAL_MS = 100;
-const _DEFAULT_DELAY_MS = 500;
 
 // キーエディタUI制御関連
 export interface KeyEditorUIHandlers {
@@ -52,47 +46,7 @@ export function KeyEditorForm({
   });
 
   const initialAction: Action = useMemo(
-    () =>
-      objectiveDiscriminantSwitch(
-        {
-          remap: (s) => ({
-            type: "remap",
-            keys: s.targetKeys,
-            repeat: s.repeat,
-            repeatDelayMs: s.repeatDelayMs,
-            repeatIntervalMs: s.repeatIntervalMs,
-          }),
-          macro: (s) => ({ type: "macro", macroId: s.macroId }),
-          layerToggle: (s) => ({
-            type: "layerToggle",
-            layerId: s.selectedLayerId,
-          }),
-          layerMomentary: (s) => ({
-            type: "layerMomentary",
-            layerId: s.selectedLayerId,
-          }),
-          mouseClick: (s) => ({
-            type: "mouseClick",
-            x: s.mouseX,
-            y: s.mouseY,
-            button: s.mouseButton,
-            clickCount: s.clickCount,
-          }),
-          mouseMove: (s) => ({
-            type: "mouseMove",
-            x: s.mouseX,
-            y: s.mouseY,
-          }),
-          cursorReturn: (s) => ({
-            type: "cursorReturn",
-            delayMs: s.cursorReturnDelayMs,
-          }),
-          delay: (s) => ({ type: "delay", delayMs: s.delayActionMs }),
-          none: () => ({ type: "none" }),
-        },
-        state,
-        "actionType"
-      ),
+    () => convertBindingStateToAction(state),
     [state]
   );
 

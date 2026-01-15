@@ -7,7 +7,7 @@ import {
   actionToBindingState,
   type BindingState,
   createInitialBindingState,
-} from "@/utils/bindingState";
+} from "@/models/BindingState";
 
 const DEFAULT_REPEAT_DELAY_MS = 500;
 const DEFAULT_REPEAT_INTERVAL_MS = 100;
