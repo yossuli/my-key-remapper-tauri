@@ -196,6 +196,8 @@ src/
 - **[Workflow-035] 大規模置換におけるスクリプト言語の選択**: パスエイリアス追加などの大規模置換作業時に、PowerShell ではなく Node.js スクリプトを使用する手順。 (`.agent/workflows/035.md`)
 - **[Workflow-037] リスト項目のクリック領域確保とボタンネスト回避**: デッドゾーンを排除しつつ HTML 構造を正当に保つ設計パターン。 (`.agent/workflows/037.md`)
   - 🏷️ **Tags**: `ux`, `clickable-area`, `hydration-error`, `nesting-forbidden`, `pattern`
+- **[Workflow-038] ユーザーデータ・設定ファイルの保存場所明示**: ユーザーのデータコントロール権を保障するため、README 等に設定ファイルの場所を明記するルール。 (`.agent/workflows/038.md`)
+  - 🏷️ **Tags**: `user-data`, `config`, `readme`, `documentation`, `transparency`
 
 ## 安全な承認プロセス (Safe Approval Process)
 
