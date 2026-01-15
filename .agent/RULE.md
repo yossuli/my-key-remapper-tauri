@@ -198,6 +198,8 @@ src/
   - 🏷️ **Tags**: `ux`, `clickable-area`, `hydration-error`, `nesting-forbidden`, `pattern`
 - **[Workflow-038] ユーザーデータ・設定ファイルの保存場所明示**: ユーザーのデータコントロール権を保障するため、README 等に設定ファイルの場所を明記するルール。 (`.agent/workflows/038.md`)
   - 🏷️ **Tags**: `user-data`, `config`, `readme`, `documentation`, `transparency`
+- **[Workflow-039] 現在の変更差分(Diff)を分析し、リファクタリング計画を策定するワークフロー**: 作業再開時や手動変更時に、現状を分析して計画に同期させる手順。 (`.agent/workflows/039.md`)
+  - 🏷️ **Tags**: `git-diff`, `sync`, `planning`, `manual-change`, `refactor-analysis`
 
 ## 安全な承認プロセス (Safe Approval Process)
 
