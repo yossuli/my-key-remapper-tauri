@@ -3,7 +3,7 @@ import { Button } from "@/components/atoms/Button";
 import { Input } from "@/components/atoms/Input";
 import { Text } from "@/components/atoms/Text";
 import { HStack, VStack } from "@/components/template/Flex";
-import { useGlobalSettings } from "@/hooks/useGlobalSettings";
+import { useGlobalSettings } from "@/hooks/api/useGlobalSettings";
 
 /**
  * グローバル設定を編集するフォーム

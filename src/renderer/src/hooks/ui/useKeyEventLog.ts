@@ -1,7 +1,7 @@
 // キーイベントログ管理のカスタムフック
 
 import { useCallback, useState } from "react";
-import { useIpcEvent } from "@/hooks/useIpc";
+import { useIpcEvent } from "@/hooks/api/useIpc";
 
 interface LogEntry {
   id: string;

@@ -1,6 +1,11 @@
-import type { Layer, TriggerType } from "@shared/types/remapConfig";
+import type { ActionType, Layer, TriggerType } from "@shared/types/remapConfig";
 import { isCircularMacro } from "@shared/utils/macroUtils";
-import { objectiveMergeSwitch } from "@shared/utils/objectiveSwitch";
+import {
+  objectiveDiscriminantPartialSwitch,
+  objectiveMergeSwitch,
+  objectiveSwitch,
+} from "@shared/utils/objectiveSwitch";
+import { useState } from "react";
 import { Button } from "@/components/atoms/Button";
 import { Select } from "@/components/atoms/Select";
 import { ToggleButton } from "@/components/atoms/ToggleButton";
@@ -12,26 +17,20 @@ import {
 import { LayerSelector } from "@/components/molecules/forms/LayerSelector";
 import { MousePositionInput } from "@/components/molecules/forms/MousePositionInput";
 import { TimingInput } from "@/components/molecules/forms/TimingInput";
+
 import { RemapKeySection } from "@/components/organisms/editor/RemapKeySection";
 import { HStack, VStack } from "@/components/template/Flex";
-import type { UseBindingConfigReturn } from "@/hooks/useBindingConfig";
-import { useMacros } from "@/hooks/useMacros";
+import { useMacros } from "@/hooks/api/useMacros";
+import type { ActionSetters } from "@/hooks/ui/useBindingConfig";
+import { useMousePosition } from "@/hooks/ui/useMousePosition";
+import type { BindingState } from "@/models/BindingState";
 import type { LayoutType } from "@/types";
 import { getLayerDescription } from "@/utils/getLayerDescription";
 
 const DEFAULT_CURSOR_RETURN_DELAY_MS = 1000;
-
-export type BindingActions = Omit<
-  UseBindingConfigReturn,
-  | "state"
-  | "existingTiming"
-  | "loadBindingForTrigger"
-  | "isCapturing"
-  | "countdown"
-  | "isInputFocused"
-  | "isRecording"
-  | "keyEditorUIHandlers"
->;
+const DEFAULT_DELAY_MS = 500;
+const COUNTDOWN_START_VALUE = 3;
+const COUNTDOWN_INTERVAL_MS = 1000;
 
 interface ActionSettingsSectionProps {
   selectedTrigger: TriggerType;
@@ -39,23 +38,22 @@ interface ActionSettingsSectionProps {
   layout: LayoutType;
   targetVk: number;
 
-  // Binding Context (state & handlers)
-  bindingActions: BindingActions;
+  // アクション設定
+  actionSetters: ActionSetters;
+  state: BindingState;
 
-  // Additional handlers
+  // UI制御
+  isInputFocused: boolean;
+  setIsInputFocused: (focused: boolean) => void;
+
+  // 追加ハンドラー
   onOpenMacros?: () => void;
   currentMacroId?: string;
-
-  // Values
-  state: UseBindingConfigReturn["state"];
-  isInputFocused: boolean;
-  isRecording: boolean;
-  keyEditorUIHandlers: UseBindingConfigReturn["keyEditorUIHandlers"];
 }
 
 export function ActionSettingsSection({
   state,
-  bindingActions,
+  actionSetters,
   currentMacroId,
   layers,
   layout,
@@ -63,23 +61,58 @@ export function ActionSettingsSection({
   selectedTrigger,
   targetVk,
   isInputFocused,
-  keyEditorUIHandlers,
+  setIsInputFocused,
 }: ActionSettingsSectionProps) {
   const { macros } = useMacros();
   const { actionType } = state;
+  const { getCursorPosition } = useMousePosition();
 
-  const {
-    setActionType,
-    setSelectedLayerId,
-    setMacroId,
-    setDelayActionMs,
-    mouseState,
-    mouseHandlers,
-    keyEditorActions,
-    repeatSettings,
-  } = bindingActions;
+  const handleActionTypeChange = (type: ActionType) => {
+    objectiveSwitch(
+      {
+        none: () => actionSetters.setNoneAction(),
+        remap: () => actionSetters.setRemapAction([], { enabled: false }),
+        layerToggle: () =>
+          actionSetters.setLayerAction("toggle", layers[0]?.id || ""),
+        layerMomentary: () =>
+          actionSetters.setLayerAction("momentary", layers[0]?.id || ""),
+        mouseMove: () => actionSetters.setMouseMoveAction(0, 0),
+        mouseClick: () => actionSetters.setMouseClickAction(0, 0, "left", 1),
+        cursorReturn: () =>
+          actionSetters.setCursorReturnAction(DEFAULT_CURSOR_RETURN_DELAY_MS),
+        macro: () => actionSetters.setMacroAction(macros[0]?.id || ""),
+        delay: () => actionSetters.setDelayAction(DEFAULT_DELAY_MS),
+      },
+      type
+    );
+  };
 
-  // マクロ選択肢の作成
+  const [mouseX, setMouseX] = useState<number>(
+    (state.actionType === "mouseMove" || state.actionType === "mouseClick") &&
+      state.mouseX !== undefined
+      ? state.mouseX
+      : 0
+  );
+  const [mouseY, setMouseY] = useState<number>(
+    (state.actionType === "mouseMove" || state.actionType === "mouseClick") &&
+      state.mouseY !== undefined
+      ? state.mouseY
+      : 0
+  );
+  const [mouseButton, setMouseButton] = useState<"left" | "right" | "middle">(
+    state.actionType === "mouseClick" ? state.mouseButton : "left"
+  );
+  const [clickCount, setClickCount] = useState<number>(
+    state.actionType === "mouseClick" ? state.clickCount : 1
+  );
+  const [cursorReturnDelayMs, setCursorReturnDelayMs] = useState<number>(
+    state.actionType === "cursorReturn"
+      ? state.cursorReturnDelayMs
+      : DEFAULT_CURSOR_RETURN_DELAY_MS
+  );
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+
   const macroOptions = macros
     .filter((m) => !isCircularMacro(currentMacroId, m.id, macros))
     .map((m) => ({
@@ -88,26 +121,57 @@ export function ActionSettingsSection({
       label: m.name,
     }));
 
+  const handleGetMousePosition = () => {
+    setIsCapturing(true);
+    setCountdown(COUNTDOWN_START_VALUE);
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          getCursorPosition().then((pos) => {
+            setMouseX(pos.x);
+            setMouseY(pos.y);
+            setIsCapturing(false);
+            objectiveDiscriminantPartialSwitch(
+              {
+                mouseMove: () => actionSetters.setMouseMoveAction(pos.x, pos.y),
+                mouseClick: () =>
+                  actionSetters.setMouseClickAction(
+                    pos.x,
+                    pos.y,
+                    mouseButton,
+                    clickCount
+                  ),
+              },
+              state,
+              "actionType"
+            );
+          });
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, COUNTDOWN_INTERVAL_MS);
+  };
+
   return (
     <ActionSelector
       actionType={actionType}
       gap={2}
-      onActionTypeChange={setActionType}
+      onActionTypeChange={handleActionTypeChange}
       triggerType={selectedTrigger}
     >
       {objectiveMergeSwitch(
         {
-          remap: () => (
+          remap: (s) => (
             <ActionSelectorContent value="remap">
               <RemapKeySection
-                addTargetKey={bindingActions.addTargetKey}
-                handleSave={bindingActions.handleSave}
+                actionSetters={actionSetters}
                 isInputFocused={isInputFocused}
-                keyEditorActions={keyEditorActions}
-                keyEditorUIHandlers={keyEditorUIHandlers}
                 layout={layout}
-                repeatSettings={repeatSettings}
                 selectedTrigger={selectedTrigger}
+                setIsInputFocused={setIsInputFocused}
+                state={s}
                 targetVk={targetVk}
               />
             </ActionSelectorContent>
@@ -117,7 +181,13 @@ export function ActionSettingsSection({
               <LayerSelector
                 description={getLayerDescription(actionType)}
                 layers={layers}
-                onLayerChange={setSelectedLayerId}
+                onLayerChange={(layerId) => {
+                  if (actionType === "layerToggle") {
+                    actionSetters.setLayerAction("toggle", layerId);
+                  } else {
+                    actionSetters.setLayerAction("momentary", layerId);
+                  }
+                }}
                 selectedLayerId={s.selectedLayerId}
               />
             </ActionSelectorContent>
@@ -130,10 +200,25 @@ export function ActionSettingsSection({
                 </p>
 
                 <MousePositionInput
-                  idPrefix="mouse"
-                  mouseHandlers={mouseHandlers}
-                  mouseState={mouseState}
-                  setFocused={keyEditorUIHandlers.setIsInputFocused}
+                  idPrefix="move"
+                  mouseHandlers={{
+                    onGetMousePosition: handleGetMousePosition,
+                    setMouseX: (val) => {
+                      setMouseX(val);
+                      actionSetters.setMouseMoveAction(val, mouseY);
+                    },
+                    setMouseY: (val) => {
+                      setMouseY(val);
+                      actionSetters.setMouseMoveAction(mouseX, val);
+                    },
+                  }}
+                  mouseState={{
+                    x: mouseX,
+                    y: mouseY,
+                    isCapturing,
+                    countdown,
+                  }}
+                  setIsInputFocused={setIsInputFocused}
                 />
               </VStack>
             </ActionSelectorContent>
@@ -147,38 +232,80 @@ export function ActionSettingsSection({
 
                 <MousePositionInput
                   idPrefix="click"
-                  mouseHandlers={mouseHandlers}
-                  mouseState={mouseState}
-                  setFocused={keyEditorUIHandlers.setIsInputFocused}
+                  mouseHandlers={{
+                    onGetMousePosition: handleGetMousePosition,
+                    setMouseX: (val) => {
+                      setMouseX(val);
+                      actionSetters.setMouseClickAction(
+                        val,
+                        mouseY,
+                        mouseButton,
+                        clickCount
+                      );
+                    },
+                    setMouseY: (val) => {
+                      setMouseY(val);
+                      actionSetters.setMouseClickAction(
+                        mouseX,
+                        val,
+                        mouseButton,
+                        clickCount
+                      );
+                    },
+                  }}
+                  mouseState={{
+                    x: mouseX,
+                    y: mouseY,
+                    isCapturing,
+                    countdown,
+                  }}
+                  setIsInputFocused={setIsInputFocused}
                 >
                   <VStack className="h-full justify-around" gap={2}>
                     <ToggleButton
-                      className="w-full"
+                      className="w-24"
                       labels={{
-                        left: "左クリック",
-                        middle: "中クリック",
-                        right: "右クリック",
+                        left: "左",
+                        middle: "中",
+                        right: "右",
                       }}
-                      onChange={mouseHandlers.setMouseButton}
+                      onChange={(btn) => {
+                        setMouseButton(btn);
+                        actionSetters.setMouseClickAction(
+                          mouseX,
+                          mouseY,
+                          btn,
+                          clickCount
+                        );
+                      }}
                       options={["left", "middle", "right"] as const}
-                      value={mouseState.button}
+                      value={mouseButton}
                     />
 
                     <ToggleButton
-                      className="w-full"
+                      className="w-24"
                       labels={{
-                        1: "シングル",
-                        2: "ダブル",
+                        1: "1回",
+                        2: "2回",
                       }}
-                      onChange={mouseHandlers.setClickCount}
+                      onChange={(count) => {
+                        setClickCount(count);
+                        actionSetters.setMouseClickAction(
+                          mouseX,
+                          mouseY,
+                          mouseButton,
+                          count
+                        );
+                      }}
                       options={[1, 2] as const}
-                      value={mouseState.clickCount}
+                      value={clickCount}
                     />
                   </VStack>
                 </MousePositionInput>
               </VStack>
             </ActionSelectorContent>
           ),
+
           cursorReturn: () => (
             <ActionSelectorContent value="cursorReturn">
               <VStack gap={4}>
@@ -190,12 +317,14 @@ export function ActionSettingsSection({
                   defaultValue={DEFAULT_CURSOR_RETURN_DELAY_MS}
                   id="cursorReturnDelay"
                   label="遅延時間 (ms)"
-                  onValueChange={(val) =>
-                    val !== undefined &&
-                    mouseHandlers.setCursorReturnDelayMs(val)
-                  }
-                  setFocused={keyEditorUIHandlers.setIsInputFocused}
-                  value={mouseState.cursorReturnDelayMs}
+                  onValueChange={(val) => {
+                    if (val !== undefined) {
+                      setCursorReturnDelayMs(val);
+                      actionSetters.setCursorReturnAction(val);
+                    }
+                  }}
+                  setFocused={setIsInputFocused}
+                  value={cursorReturnDelayMs}
                 />
               </VStack>
             </ActionSelectorContent>
@@ -211,7 +340,9 @@ export function ActionSettingsSection({
                     <Select
                       id="macroSelect"
                       label="マクロを選択"
-                      onValueChange={setMacroId}
+                      onValueChange={(macroId) =>
+                        actionSetters.setMacroAction(macroId)
+                      }
                       options={macroOptions}
                       select-value={s.macroId}
                     />
@@ -235,10 +366,12 @@ export function ActionSettingsSection({
                   defaultValue={500}
                   id="delayActionInput"
                   label="待機時間 (ms)"
-                  onValueChange={(val) =>
-                    val !== undefined && setDelayActionMs(val)
-                  }
-                  setFocused={keyEditorUIHandlers.setIsInputFocused}
+                  onValueChange={(val) => {
+                    if (val !== undefined) {
+                      actionSetters.setDelayAction(val);
+                    }
+                  }}
+                  setFocused={setIsInputFocused}
                   value={s.delayActionMs}
                 />
               </VStack>

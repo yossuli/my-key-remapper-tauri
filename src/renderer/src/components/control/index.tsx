@@ -1,17 +1,16 @@
 import type React from "react";
 import type { JSX } from "react";
 
-export type _BaseProps<T extends JSX.ElementType = typeof React.Fragment> = {
+export type BaseProps<
+  T extends React.ElementType = typeof React.Fragment,
+  // biome-ignore lint/suspicious/noExplicitAny: 汎用性を持たせるため
+  U extends Record<string, any> = {
+    children?: React.ReactNode;
+  },
+> = {
   as?: T;
-} & {
-  [k in keyof React.HTMLAttributes<T>]: React.HTMLAttributes<T>[keyof React.HTMLAttributes<T>];
-};
-
-export interface BaseProps<T extends JSX.ElementType = typeof React.Fragment>
-  extends _BaseProps<T> {
-  as?: T;
-  children: React.ReactNode;
-}
+} & U &
+  Omit<React.ComponentProps<T>, keyof U>;
 
 export const findWithComponentType = <
   T extends JSX.Element,

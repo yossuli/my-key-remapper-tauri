@@ -4,9 +4,11 @@ import { useDragControls } from "framer-motion";
 import { GripVertical, Trash2 } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
 import { Icon } from "@/components/atoms/Icon";
+import { ListCellButton } from "@/components/atoms/ListCellButton";
 import { RichText } from "@/components/atoms/RichText";
+import { Else, Ternary, Then } from "@/components/control/Ternary";
 import { HStack } from "@/components/template/Flex";
-import { useMacros } from "@/hooks/useMacros";
+import { useMacros } from "@/hooks/api/useMacros";
 import type { ActionSummaryHandlers } from "../organisms/macro/types";
 
 interface ActionItemProps {
@@ -50,14 +52,13 @@ export function ActionItem({
 
         return (
           <span className="flex w-full items-center">
-            <Button
-              className="h-auto justify-start px-2 py-2 font-medium hover:bg-transparent"
+            <ListCellButton
+              className="w-auto px-2 py-2"
               data-action="edit"
               onClick={onEdit}
-              variant="ghost"
             >
               マクロ実行:
-            </Button>
+            </ListCellButton>
             <Button
               className="ml-1 px-1 font-mono text-blue-400 hover:bg-blue-400/10 hover:underline"
               onClick={(e) => {
@@ -69,11 +70,10 @@ export function ActionItem({
             >
               {displayText}
             </Button>
-            <Button
-              className="h-auto w-full justify-start px-2 py-2 font-medium hover:bg-transparent"
+            <ListCellButton
+              className="px-2 py-2"
               data-action="edit"
               onClick={onEdit}
-              variant="ghost"
             />
           </span>
         );
@@ -94,21 +94,21 @@ export function ActionItem({
         <Icon className="text-muted-foreground" icon={GripVertical} size="sm" />
       </div>
 
-      <div className="flex flex-1 items-center font-mono text-sm">
+      <HStack as="div" className="flex-1 font-mono text-sm">
         <span className="px-2 text-muted-foreground">{index + 1}.</span>
-        {typeof summaryContent === "string" ? (
-          <Button
-            className="h-auto w-full justify-start px-2 py-2 font-medium hover:bg-transparent"
-            data-action="edit"
-            onClick={onEdit}
-            variant="ghost"
-          >
-            <RichText text={summaryContent} />
-          </Button>
-        ) : (
-          summaryContent
-        )}
-      </div>
+        <Ternary condition={typeof summaryContent === "string"}>
+          <Then>
+            <ListCellButton
+              className="px-2 py-2"
+              data-action="edit"
+              onClick={onEdit}
+            >
+              <RichText text={summaryContent as string} />
+            </ListCellButton>
+          </Then>
+          <Else>{summaryContent}</Else>
+        </Ternary>
+      </HStack>
 
       <HStack gap={1}>
         <Button

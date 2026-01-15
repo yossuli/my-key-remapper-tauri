@@ -1,33 +1,61 @@
-import type React from "react";
 import type { JSX } from "react";
+import React from "react";
 import { findWithComponentType } from "@/components/control/index";
 import { define } from "@/utils/define";
 import type { BaseProps } from ".";
 
-interface CaseProps {
-  when: boolean;
-  children: React.ReactNode;
-}
+type CaseProps<T extends React.ElementType = typeof React.Fragment> = BaseProps<
+  T,
+  {
+    when: boolean;
+    children?: React.ReactNode;
+  }
+>;
 
-interface DefineCaseProps<T> {
-  when: T | undefined | null;
-  children: (when: T) => React.ReactNode;
-}
+type DefineCaseProps<
+  T,
+  U extends React.ElementType = typeof React.Fragment,
+> = BaseProps<
+  U,
+  {
+    when: T | undefined | null;
+    children: (when: T) => React.ReactNode;
+  }
+>;
 
-interface DefaultProps<T extends JSX.ElementType = typeof React.Fragment>
-  extends BaseProps<T> {}
+export const Case = <T extends React.ElementType = typeof React.Fragment>({
+  children,
+  as,
+  ...props
+}: CaseProps<T>) => {
+  const Tag = as ?? React.Fragment;
+  return <Tag {...props}>{children}</Tag>;
+};
 
-export const Case = ({ children }: CaseProps) => <>{children}</>;
-
-export const DefineCase = <T,>({
+export const DefineCase = <
+  T,
+  U extends React.ElementType = typeof React.Fragment,
+>({
   children,
   when,
-}: DefineCaseProps<T>): JSX.Element | false =>
-  define(when) && <>{children(when)}</>;
+  as,
+  ...props
+}: DefineCaseProps<T, U>) => {
+  if (!define(when)) {
+    return null;
+  }
+  const Tag = as ?? React.Fragment;
+  return <Tag {...props}>{children(when)}</Tag>;
+};
 
-export const Default = <T extends JSX.ElementType = typeof React.Fragment>({
+export const Default = <T extends React.ElementType = typeof React.Fragment>({
   children,
-}: DefaultProps<T>) => <>{children}</>;
+  as,
+  ...props
+}: BaseProps<T>) => {
+  const Tag = as ?? React.Fragment;
+  return <Tag {...props}>{children}</Tag>;
+};
 
 export const Switch = ({ children }: { children: JSX.Element[] }) => {
   const match = children.find(

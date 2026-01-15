@@ -7,7 +7,7 @@ interface TernaryProps {
   children: [JSX.Element, JSX.Element];
 }
 
-export const Then = <T extends JSX.ElementType = typeof React.Fragment>({
+export const Then = <T extends React.ElementType = typeof React.Fragment>({
   children,
   as,
   ...props
@@ -16,7 +16,7 @@ export const Then = <T extends JSX.ElementType = typeof React.Fragment>({
   return <Tag {...props}>{children}</Tag>;
 };
 
-export const Else = <T extends JSX.ElementType = typeof React.Fragment>({
+export const Else = <T extends React.ElementType = typeof React.Fragment>({
   children,
   as,
   ...props

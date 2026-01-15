@@ -1,7 +1,7 @@
 // レイヤースタック状態を取得・監視するフック
 
 import { useCallback, useEffect, useState } from "react";
-import { useIpc, useIpcEvent } from "@/hooks/useIpc";
+import { useIpc, useIpcEvent } from "@/hooks/api/useIpc";
 
 export interface UseLayerStackReturn {
   /** 現在のレイヤースタック */

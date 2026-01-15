@@ -17,16 +17,14 @@ import type {
   MappingActions,
 } from "@/components/pages/KeyRemapperPage";
 import { HStack, VStack } from "@/components/template/Flex";
-import type { UseGlobalSettingsReturn } from "@/hooks/useGlobalSettings";
-import type { UseKeyEventLogReturn } from "@/hooks/useKeyEventLog";
-import type { UseLayerStackReturn } from "@/hooks/useLayerStack";
-import type { UseLayerStateReturn } from "@/hooks/useLayerState";
-import { useQuickRemap } from "@/hooks/useQuickRemap";
-import type { UseRemapControlReturn } from "@/hooks/useRemapControl";
+import type { UseGlobalSettingsReturn } from "@/hooks/api/useGlobalSettings";
+import type { UseLayerStateReturn } from "@/hooks/api/useLayerState";
+import type { UseRemapControlReturn } from "@/hooks/api/useRemapControl";
+import type { UseKeyEventLogReturn } from "@/hooks/ui/useKeyEventLog";
+import type { UseLayerStackReturn } from "@/hooks/ui/useLayerStack";
+import { useQuickRemap } from "@/hooks/ui/useQuickRemap";
 import type { KeyboardLayout, LayoutType } from "@/types";
 import { cn } from "@/utils/cn";
-
-// --- 型定義 ---
 
 export type LayerActions = Pick<
   UseLayerStateReturn,
@@ -72,17 +70,17 @@ interface KeyRemapSectionProps {
 }
 
 export function KeyRemapSection({
-  layerState, // 🎁 → 🎁/🔨🔥 (A. Layer Management Flow)
-  layerActions, // 🎁 → 🎁/🔨🔥 (A. Layer Management Flow)
-  mappingActions, // 🎁 → 🎁/🔥 (B. Mapping & Remap Actions)
-  remapActions, // 🎁 → 🔥 (B. Mapping & Remap Actions)
-  layout, // 🚌 → 🚌 (C. UI Configuration)
-  keyboardLayout, // 🚌 → 🚌 (C. UI Configuration)
-  bindings, // 🚌 → 🚌 (C. UI Configuration)
-  selectedTrigger, // 🚌🔥 → 🚌🔥 (C. UI Configuration)
-  toggleLayout, // 🚌 → 🔥 (D. Event Handlers)
-  setSelectedTrigger, // 🚌 → 🔥 (D. Event Handlers)
-  setEditingKey, // 🚌 → 🔥 (D. Event Handlers)
+  layerState,
+  layerActions,
+  mappingActions,
+  remapActions,
+  layout,
+  keyboardLayout,
+  bindings,
+  selectedTrigger,
+  toggleLayout,
+  setSelectedTrigger,
+  setEditingKey,
 }: KeyRemapSectionProps) {
   const [isQuickEditMode, setIsQuickEditMode] = useState(false);
 
@@ -98,12 +96,10 @@ export function KeyRemapSection({
     });
 
   const onKeyClick = (vk: number) => {
-    // クイック設定モードの場合は即座にリマップ設定待ち状態に
     if (isQuickEditMode) {
       startQuickEditing(vk);
       return;
     }
-    // 通常モードの場合はモーダルを開く
     remapActions.disableRemap();
     setEditingKey(vk);
   };
@@ -111,7 +107,6 @@ export function KeyRemapSection({
   const onToggleQuickEditMode = useCallback(() => {
     setIsQuickEditMode((prev) => {
       const next = !prev;
-      // クイックモード開始時はリマップを無効化、終了時は有効化
       if (next) {
         remapActions.disableRemap();
       } else {
@@ -129,11 +124,10 @@ export function KeyRemapSection({
           layerState={layerState}
           layout={layout}
         />
-        {/* 🎁 → 🔨🔥 (A. Layer Management Flow) */}
         <HStack className="gap-2">
           <TriggerTabs
-            onTriggerChange={setSelectedTrigger} // 🚌 → 🔥 (D. Event Handlers)
-            selectedTrigger={selectedTrigger} // 🚌🔥 → 🔥 (C. UI Configuration)
+            onTriggerChange={setSelectedTrigger}
+            selectedTrigger={selectedTrigger}
             size="compact"
           />
           <Button
@@ -152,14 +146,14 @@ export function KeyRemapSection({
 
       <div className="overflow-x-auto">
         <KeyboardGrid
-          bindings={bindings} // 🚌 → 🚌🔥 (C. UI Configuration)
-          keyboardLayout={keyboardLayout} // 🚌 → 🚌🔥 (C. UI Configuration)
-          layerState={layerState} // 🎁 → 🎁 (A. Layer Management Flow)
-          layout={layout} // 🚌 → 🚌🔥 (C. UI Configuration)
-          mappingActions={mappingActions} // 🎁 → 🎁 (B. Mapping & Remap Actions)
+          bindings={bindings}
+          keyboardLayout={keyboardLayout}
+          layerState={layerState}
+          layout={layout}
+          mappingActions={mappingActions}
           onKeyClick={onKeyClick}
           quickEditingKey={quickEditingKey}
-          selectedTrigger={selectedTrigger} // 🚌🔥 → 🚌🔥 (C. UI Configuration)
+          selectedTrigger={selectedTrigger}
         />
       </div>
       <div className="flex items-center justify-between">
@@ -167,8 +161,7 @@ export function KeyRemapSection({
           <Icon className="opacity-70" icon={Settings} size="md" />
           Keyboard Layout: {layout}
         </h2>
-        <LayoutToggle currentLayout={layout} onToggle={toggleLayout} />{" "}
-        {/* 🚌 → 🔥 (D. Event Handlers) */}
+        <LayoutToggle currentLayout={layout} onToggle={toggleLayout} />
       </div>
     </VStack>
   );

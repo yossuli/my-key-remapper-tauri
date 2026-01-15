@@ -2,10 +2,13 @@ import { Check, Plus } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Button } from "@/components/atoms/Button";
 import { Icon } from "@/components/atoms/Icon";
+import { Show } from "@/components/control/Show";
+import { Else, Ternary, Then } from "@/components/control/Ternary";
 import { HStack, VStack } from "@/components/template/Flex";
-import { useKeyCapture } from "@/hooks/useKeyCapture";
-import { useKeyEventInput } from "@/hooks/useKeyEventInput";
+import { useKeyCapture } from "@/hooks/ui/useKeyCapture";
+import { useKeyEventInput } from "@/hooks/ui/useKeyEventInput";
 import type { LayoutType } from "@/types";
+import { cn } from "@/utils/cn";
 import { KeyRemapItems } from "./KeyRemapItems";
 import { VkDirectInput } from "./VkDirectInput";
 
@@ -23,9 +26,6 @@ export interface KeyRemapListProps {
   onCaptureActiveChange?: (active: boolean) => void;
 }
 
-/**
- * キーのリスト表示、数値入力、およびグローバルキャプチャを統合した Smart Component
- */
 export function KeyRemapList({
   initialKeys,
   layout,
@@ -43,7 +43,6 @@ export function KeyRemapList({
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
 
-  // useEventHandler の enabled 判定などで参照するために再定義
   const isCaptureActive =
     isCaptureEnabled && (!requireExplicitAdd || isCapturing);
 
@@ -56,15 +55,11 @@ export function KeyRemapList({
     [isCaptureEnabled, requireExplicitAdd, onCaptureActiveChange]
   );
 
-  // 内部でキャプチャロジックを管理
-  // useKeyCapture は内部ステートを持たず、完全に props (initialKeys) に依存して動作する
-  const { holds, inputKey, removeKey, onKeyDown, onKeyUp, reset } =
-    useKeyCapture({
-      currentKeys: initialKeys,
-      onKeysChange,
-    });
+  const { inputKey, removeKey, onKeyDown, onKeyUp, reset } = useKeyCapture({
+    currentKeys: initialKeys,
+    onKeysChange,
+  });
 
-  // グローバルイベントの監視も内包（数値入力中は停止する）
   useKeyEventInput({
     enabled: isCaptureActive && !isInputFocused,
     onKeyDown: (vkCode) => {
@@ -92,23 +87,31 @@ export function KeyRemapList({
           showVkInput={showVkInput}
         />
 
-        {!!requireExplicitAdd && (
-          <Button
-            className={isCapturing ? "animate-pulse gap-2" : "gap-2"}
-            onClick={() => handleCaptureChange(!isCapturing)}
-            variant={isCapturing ? "default" : "outline"}
-          >
-            {isCapturing ? <Icon icon={Check} /> : <Icon icon={Plus} />}
-            {isCapturing ? "完了" : "追加"}
-          </Button>
-        )}
+        <Show
+          as={Button}
+          className={cn("gap-2", { "animate-pulse": isCapturing })}
+          condition={!!requireExplicitAdd}
+          onClick={() => handleCaptureChange(!isCapturing)}
+          variant={isCapturing ? "default" : "outline"}
+        >
+          <Ternary condition={!isCapturing}>
+            <Then as={Icon} icon={Plus} />
+            <Else as={Icon} icon={Check} />
+          </Ternary>
+          {isCapturing ? "完了" : "追加"}
+        </Show>
 
-        {initialKeys.length > 0 && (
-          <Button label="クリア" onClick={() => {
+        <Show
+          as={Button}
+          condition={initialKeys.length > 0}
+          onClick={() => {
             reset();
             onClear?.();
-          }} variant="ghost" />
-        )}
+          }}
+          variant="ghost"
+        >
+          クリア
+        </Show>
       </HStack>
       <VkDirectInput
         onAddKey={inputKey}

@@ -17,8 +17,11 @@ import {
   Side,
 } from "@/components/template/MainLayout";
 import { ModalLayout } from "@/components/template/ModalLayout";
-import { type UseLayerStateReturn, useLayerState } from "@/hooks/useLayerState";
-import { useRemapControl } from "@/hooks/useRemapControl";
+import {
+  type UseLayerStateReturn,
+  useLayerState,
+} from "@/hooks/api/useLayerState";
+import { useRemapControl } from "@/hooks/api/useRemapControl";
 import type { LayoutType } from "@/types";
 
 // --- 型定義 ---
@@ -127,22 +130,7 @@ export function KeyRemapperPage({ onNavigateMacros }: KeyRemapperPageProps) {
             layout={layout} // 🆕 → 🔥 (I. Key Editor Modal)
             onOpenMacros={onNavigateMacros}
             onRemove={() => removeMapping(e, selectedTrigger)} // 🆕 → 🔥 (I. Key Editor Modal)
-            onSave={(action, timing, activeTrigger) => {
-              // activeTrigger が不明な場合は選択中のトリガーを使用
-              const currentTrigger = activeTrigger || selectedTrigger;
-
-              // Timing Mapping
-              let timingVal: number | undefined | null;
-              if (timing) {
-                if (currentTrigger === "hold") {
-                  timingVal = timing.hold;
-                } else if (currentTrigger === "doubleTap") {
-                  timingVal = timing.doubleTap;
-                }
-              }
-
-              saveMapping(e)(currentTrigger, action, timingVal);
-            }} // 🆕 → 🔥 (I. Key Editor Modal)
+            onSave={saveMapping(e, selectedTrigger)}
             targetVk={e} // 🆕 → 🔥 (I. Key Editor Modal)
           />
         )}

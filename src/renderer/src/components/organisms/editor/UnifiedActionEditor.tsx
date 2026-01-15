@@ -1,4 +1,3 @@
-import { VK } from "@shared/constants/vk";
 import type { Action, Layer, TriggerType } from "@shared/types/remapConfig";
 import { ArrowRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -11,9 +10,7 @@ import { TriggerTabs } from "@/components/molecules/forms/TriggerTabs";
 import { ActionSettingsSection } from "@/components/organisms/editor/ActionSettingsSection";
 import { TimingSettingsSection } from "@/components/organisms/editor/TimingSettingsSection";
 import { HStack, VStack } from "@/components/template/Flex";
-import { useBindingConfig } from "@/hooks/useBindingConfig";
-import { useEventHandler } from "@/hooks/useEventHandler";
-import { useKeyHoldAction } from "@/hooks/useKeyHoldAction";
+import { useBindingConfig } from "@/hooks/ui/useBindingConfig";
 import {
   type BindingState,
   createBindingStateFromAction,
@@ -69,11 +66,9 @@ export function UnifiedActionEditor({
   onOpenMacros,
   existingTiming: existingTimingProp,
 }: UnifiedActionEditorProps) {
-  // === UI State ===
   const [selectedTrigger, setSelectedTrigger] =
     useState<TriggerType>(initialTrigger);
 
-  // 1. initialState の計算 (依存なし)
   const initialState = useMemo(() => {
     if (initialBindingState) {
       return initialBindingState;
@@ -91,7 +86,6 @@ export function UnifiedActionEditor({
     number | undefined
   >(undefined);
 
-  // 2. handleSaveInternal の定義 (state 依存なし)
   const handleSaveInternal = useCallback(
     (action: Action) => {
       const timing = targetVk
@@ -110,45 +104,28 @@ export function UnifiedActionEditor({
     ]
   );
 
+  // UIローカル状態
+  const [isInputFocused, setIsInputFocused] = useState(false);
+
   // 3. useBindingConfig の呼び出し (initialState, handleSaveInternal に依存)
   const {
     state,
+    isLoading,
     existingTiming: fetchedTiming,
+    actionSetters,
     handleSave,
-    addTargetKey,
-    isInputFocused,
-    isRecording,
-    keyEditorUIHandlers,
-    ...bindingActions
   } = useBindingConfig({
     targetVk,
     layerId,
-    defaultLayerId: layers[0]?.id || "",
+    trigger: selectedTrigger,
     initialState,
-    selectedTrigger,
     onSave: handleSaveInternal,
     onRemove,
   });
 
-  // マウント時のみ初期ロード
-  useEffect(() => {
-    if (targetVk !== undefined) {
-      bindingActions.loadBindingForTrigger(initialTrigger);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handleTriggerChange = useCallback((trigger: TriggerType) => {
+    setSelectedTrigger(trigger);
   }, []);
-
-  const handleTriggerChange = useCallback(
-    (trigger: TriggerType) => {
-      setSelectedTrigger(trigger);
-      if (targetVk !== undefined) {
-        bindingActions.loadBindingForTrigger(trigger);
-      }
-    },
-    [bindingActions.loadBindingForTrigger, targetVk]
-  );
-
-
 
   useEffect(() => {
     setLocalHoldThresholdMs(
@@ -157,63 +134,25 @@ export function UnifiedActionEditor({
     setLocalTapIntervalMs(
       fetchedTiming.tapIntervalMs ?? existingTimingProp?.tapIntervalMs
     );
-  }, [fetchedTiming]);
-
-  const { actionType } = state;
-
-  // === Event Handlers ===
-  const { handleHoldKeyDown, handleHoldKeyUp } = useKeyHoldAction({
-    targetKey: VK.ENTER,
-    holdMs: 500, // UX改善: 800ms -> 500ms
-  });
-
-  const eventHandlers = useMemo(
-    () => [
-      {
-        type: "keydown" as const,
-        handler: (e: KeyboardEvent) => {
-          if (e.keyCode === VK.ENTER && !isRecording) {
-            // ブラウザのデフォルト挙動を抑止（これが保存できない原因だった可能性大）
-            e.preventDefault();
-            e.stopPropagation();
-            handleHoldKeyDown(e.keyCode, {
-              onHold: handleSave,
-            });
-          }
-        },
-      },
-      {
-        type: "keyup" as const,
-        handler: (e: KeyboardEvent) => {
-          if (e.keyCode === VK.ENTER && !isRecording) {
-            e.preventDefault();
-            e.stopPropagation();
-            handleHoldKeyUp(e.keyCode, {
-              onTap: () => state.actionType === "remap" && addTargetKey(VK.ENTER),
-              onHold: handleSave,
-            });
-          }
-        },
-      },
-    ],
-    [
-      handleHoldKeyDown,
-      handleHoldKeyUp,
-      handleSave,
-      state.actionType,
-      addTargetKey,
-      isRecording,
-    ]
-  );
-
-  useEventHandler(eventHandlers, [eventHandlers], { enabled: !isRecording });
+  }, [fetchedTiming, existingTimingProp]);
 
   const targetKeys = state.actionType === "remap" ? state.targetKeys : null;
+
+  if (isLoading) {
+    return (
+      <VStack className="h-full items-center justify-center" gap={4}>
+        <div className="h-8 w-8 animate-spin rounded-full border-primary border-b-2" />
+        <p className="text-muted-foreground text-sm">読み込み中...</p>
+      </VStack>
+    );
+  }
+
+  const { actionType } = state;
 
   return (
     <VStack
       className={targetVk ? "px-6" : "h-full min-h-[400px] p-6"}
-      // biome-ignore lint/style/noMagicNumbers: UIなのでいったん無視する
+      // biome-ignore lint/style/noMagicNumbers: UIのgapは適切な値なので許容
       gap={targetVk ? 4 : 6}
     >
       <Show condition={!!targetVk}>
@@ -244,25 +183,24 @@ export function UnifiedActionEditor({
         selectedTrigger={selectedTrigger}
       >
         <ActionSettingsSection
-          bindingActions={{ ...bindingActions, addTargetKey, handleSave }}
+          actionSetters={actionSetters}
           currentMacroId={currentMacroId}
           isInputFocused={isInputFocused}
-          isRecording={isRecording}
-          keyEditorUIHandlers={keyEditorUIHandlers}
           layers={layers}
           layout={layout}
           onOpenMacros={onOpenMacros}
           selectedTrigger={selectedTrigger}
+          setIsInputFocused={setIsInputFocused}
           state={state}
           targetVk={targetVk || 0}
         />
         <TimingSettingsSection
-          defaultHoldThresholdMs={200} // TODO: Pass defaults
-          defaultTapIntervalMs={300} // TODO: Pass defaults
+          defaultHoldThresholdMs={200}
+          defaultTapIntervalMs={300}
           holdThresholdMs={localHoldThresholdMs}
           selectedTrigger={selectedTrigger}
           setHoldThresholdMs={setLocalHoldThresholdMs}
-          setIsInputFocused={keyEditorUIHandlers.setIsInputFocused}
+          setIsInputFocused={setIsInputFocused}
           setTapIntervalMs={setLocalTapIntervalMs}
           tapIntervalMs={localTapIntervalMs}
         />

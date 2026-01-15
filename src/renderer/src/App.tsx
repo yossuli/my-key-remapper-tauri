@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Else, Ternary, Then } from "@/components/control/Ternary";
 import { KeyRemapperPage } from "@/components/pages/KeyRemapperPage";
 import { MacroManagerPage } from "@/components/pages/MacroManagerPage";
-import { useRemapControl } from "@/hooks/useRemapControl";
+import { useRemapControl } from "@/hooks/api/useRemapControl";
 
 export type ViewType = "remapper" | "macros";
 

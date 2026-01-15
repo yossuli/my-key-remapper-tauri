@@ -2,7 +2,7 @@
 
 import type { Layer } from "@shared/types/remapConfig";
 import { useCallback } from "react";
-import { useIpc } from "@/hooks/useIpc";
+import { useIpc } from "@/hooks/api/useIpc";
 
 /**
  * IPC invokeの型安全ラッパー

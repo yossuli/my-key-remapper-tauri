@@ -1,7 +1,7 @@
 // リマップ有効/無効の制御フック
 
 import { useCallback, useState } from "react";
-import { useIpc } from "@/hooks/useIpc";
+import { useIpc } from "@/hooks/api/useIpc";
 
 export interface UseRemapControlReturn {
   isActive: boolean;

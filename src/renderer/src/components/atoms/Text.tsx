@@ -2,12 +2,15 @@ import type React from "react";
 import type { BaseProps } from "@/components/control";
 import { cn } from "@/utils/cn";
 
-interface TextProps<T extends React.ElementType = "span"> extends BaseProps<T> {
-  children: React.ReactNode;
-  variant?: "default" | "muted" | "error" | "success" | "warning";
-  size?: "xs" | "sm" | "base" | "lg" | "xl";
-  weight?: "normal" | "medium" | "semibold" | "bold";
-}
+type TextProps<T extends React.ElementType = "span"> = BaseProps<
+  T,
+  {
+    children: React.ReactNode;
+    variant?: "default" | "muted" | "error" | "success" | "warning";
+    size?: "xs" | "sm" | "base" | "lg" | "xl";
+    weight?: "normal" | "medium" | "semibold" | "bold";
+  }
+>;
 
 const variantStyles = {
   default: "text-foreground",

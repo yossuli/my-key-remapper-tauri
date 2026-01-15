@@ -4,7 +4,7 @@ import { Icon } from "@/components/atoms/Icon";
 import { HandleEmpty } from "@/components/control/HandleEmpty";
 import { LogEntry } from "@/components/molecules/display/LogEntry";
 import { VStack } from "@/components/template/Flex";
-import { useKeyEventLog } from "@/hooks/useKeyEventLog";
+import { useKeyEventLog } from "@/hooks/ui/useKeyEventLog";
 
 export function LogList() {
   const { logs, isPaused, setIsPaused } = useKeyEventLog();

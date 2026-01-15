@@ -1,18 +1,20 @@
-import type { JSX } from "react";
 import React from "react";
-import type { _BaseProps } from ".";
+import type { BaseProps } from ".";
 
 type MappedProps<
   T extends { id: string | number },
-  U extends JSX.ElementType = typeof React.Fragment,
-> = {
-  value: readonly T[];
-  children: (item: T, index: number, array: readonly T[]) => React.ReactNode;
-} & _BaseProps<U>;
+  U extends React.ElementType = typeof React.Fragment,
+> = BaseProps<
+  U,
+  {
+    value: readonly T[];
+    children: (item: T, index: number, array: readonly T[]) => React.ReactNode;
+  }
+>;
 
 export const Mapped = <
   T extends { id: string | number },
-  U extends JSX.ElementType = typeof React.Fragment,
+  U extends React.ElementType = typeof React.Fragment,
 >({
   value,
   children,

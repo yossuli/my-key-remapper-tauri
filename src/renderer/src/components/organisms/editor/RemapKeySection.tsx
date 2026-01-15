@@ -1,6 +1,7 @@
 import { VK } from "@shared/constants/vk";
 import type { TriggerType } from "@shared/types/remapConfig";
 import { ArrowRight } from "lucide-react";
+import { useState } from "react";
 import { Icon } from "@/components/atoms/Icon";
 import { Show } from "@/components/control/Show";
 import { KeyDisplay } from "@/components/molecules/display/KeyDisplay";
@@ -9,41 +10,80 @@ import { TimingInput } from "@/components/molecules/forms/TimingInput";
 import { HStack, VStack } from "@/components/template/Flex";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import type {
-  KeyEditorUIHandlers,
-  RepeatSettings,
-} from "@/hooks/useBindingConfig";
-import type { UseKeyEditorActionsReturn } from "@/hooks/useKeyEditorAction";
+import type { ActionSetters, RepeatConfig } from "@/hooks/ui/useBindingConfig";
+import type { RemapBindingState } from "@/models/BindingState";
 import type { LayoutType } from "@/types";
 
 interface RemapKeySectionProps {
   targetVk: number;
   layout: LayoutType;
-
-  keyEditorActions: UseKeyEditorActionsReturn;
-  keyEditorUIHandlers: KeyEditorUIHandlers;
-
-  // リピート設定
-  selectedTrigger: TriggerType;
-  repeatSettings: RepeatSettings;
-
-  // 追加されたハンドラー
+  actionSetters: ActionSetters;
+  state: RemapBindingState;
   isInputFocused: boolean;
-  handleSave: () => void;
-  addTargetKey: (keyCode: number) => void;
+  setIsInputFocused: (focused: boolean) => void;
+  selectedTrigger: TriggerType;
 }
 
 export function RemapKeySection({
   targetVk,
   layout,
-  keyEditorActions,
-  keyEditorUIHandlers:{ setIsInputFocused,setIsRecording },
+  actionSetters,
+  state: {
+    targetKeys,
+    repeat = false,
+    repeatDelayMs = 500,
+    repeatIntervalMs = 100,
+  },
+  setIsInputFocused,
   selectedTrigger,
-  repeatSettings,
 }: RemapKeySectionProps) {
-  const { keys, setKeys, reset } = keyEditorActions;
-  const { repeat, repeatDelayMs, repeatIntervalMs, onRepeatChange } =
-    repeatSettings;
+  const [localRepeat, setLocalRepeat] = useState(repeat);
+  const [localRepeatDelayMs, setLocalRepeatDelayMs] = useState(repeatDelayMs);
+  const [localRepeatIntervalMs, setLocalRepeatIntervalMs] =
+    useState(repeatIntervalMs);
+
+  const handleKeysChange = (keys: number[]) => {
+    const repeatConfig: RepeatConfig = {
+      enabled: localRepeat,
+      delayMs: localRepeatDelayMs,
+      intervalMs: localRepeatIntervalMs,
+    };
+    actionSetters.setRemapAction(keys, repeatConfig);
+  };
+
+  const handleRepeatChange = (enabled: boolean) => {
+    setLocalRepeat(enabled);
+    const repeatConfig: RepeatConfig = {
+      enabled,
+      delayMs: localRepeatDelayMs,
+      intervalMs: localRepeatIntervalMs,
+    };
+    actionSetters.setRemapAction(targetKeys, repeatConfig);
+  };
+
+  const handleRepeatDelayChange = (delayMs?: number) => {
+    if (delayMs !== undefined) {
+      setLocalRepeatDelayMs(delayMs);
+      const repeatConfig: RepeatConfig = {
+        enabled: localRepeat,
+        delayMs,
+        intervalMs: localRepeatIntervalMs,
+      };
+      actionSetters.setRemapAction(targetKeys, repeatConfig);
+    }
+  };
+
+  const handleRepeatIntervalChange = (intervalMs?: number) => {
+    if (intervalMs !== undefined) {
+      setLocalRepeatIntervalMs(intervalMs);
+      const repeatConfig: RepeatConfig = {
+        enabled: localRepeat,
+        delayMs: localRepeatDelayMs,
+        intervalMs,
+      };
+      actionSetters.setRemapAction(targetKeys, repeatConfig);
+    }
+  };
 
   return (
     <VStack gap={4}>
@@ -52,14 +92,13 @@ export function RemapKeySection({
         <Icon icon={ArrowRight} size="md" />
         <KeyRemapList
           ignoredKeys={[VK.ENTER, VK.ESCAPE, VK.TAB]}
-          initialKeys={keys}
+          initialKeys={targetKeys}
           isCaptureEnabled={true}
-          isRemoveDisabled={() => keys.length === 1}
+          isRemoveDisabled={() => targetKeys.length === 1}
           layout={layout}
-          onCaptureActiveChange={setIsRecording}
-          onClear={reset}
+          onClear={() => handleKeysChange([])}
           onInputFocusChange={setIsInputFocused}
-          onKeysChange={setKeys}
+          onKeysChange={handleKeysChange}
         />
       </HStack>
 
@@ -67,40 +106,32 @@ export function RemapKeySection({
         <VStack className="border-t pt-4" gap={4}>
           <div className="flex items-center space-x-2">
             <Checkbox
-              checked={repeat ?? false}
+              checked={localRepeat}
               id="repeat-mode"
               onCheckedChange={(checked) => {
-                onRepeatChange(
-                  checked === true,
-                  repeatDelayMs,
-                  repeatIntervalMs
-                );
+                handleRepeatChange(checked === true);
               }}
             />
             <Label htmlFor="repeat-mode">長押し中リピート</Label>
           </div>
 
-          <Show condition={!!repeat}>
+          <Show condition={localRepeat}>
             <HStack className="items-end" gap={4}>
               <TimingInput
                 defaultValue={500}
                 id="repeatDelay"
                 label="開始遅延 (ms)"
-                onValueChange={(val) =>
-                  onRepeatChange(repeat ?? false, val, repeatIntervalMs)
-                }
+                onValueChange={handleRepeatDelayChange}
                 setFocused={setIsInputFocused}
-                value={repeatDelayMs}
+                value={localRepeatDelayMs}
               />
               <TimingInput
                 defaultValue={100}
                 id="repeatInterval"
                 label="間隔 (ms)"
-                onValueChange={(val) =>
-                  onRepeatChange(repeat ?? false, repeatDelayMs, val)
-                }
+                onValueChange={handleRepeatIntervalChange}
                 setFocused={setIsInputFocused}
-                value={repeatIntervalMs}
+                value={localRepeatIntervalMs}
               />
             </HStack>
           </Show>

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/atoms/Button";
 import { Show } from "@/components/control/Show";
 import { VStack } from "@/components/template/Flex";
-import { useGetPressedKeys, useReleaseAllKeys } from "@/hooks/useInvoke";
+import { useGetPressedKeys, useReleaseAllKeys } from "@/hooks/api/useInvoke";
 import type { LayoutType } from "@/types";
 import { getKeyLabel } from "@/utils/getKeyLabel";
 

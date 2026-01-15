@@ -2,7 +2,7 @@
 
 import type { Action, Layer, TriggerType } from "@shared/types/remapConfig";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useIpc } from "@/hooks/useIpc";
+import { useIpc } from "@/hooks/api/useIpc";
 import { remove, upsert } from "@/utils/handleMapping";
 
 const REFRESH_DELAY_MS = 100;
@@ -17,8 +17,13 @@ export interface UseLayerStateReturn {
   removeLayer: (targetLayerId: string) => void;
   reorderLayers: (newOrder: string[]) => void; // 追加
   saveMapping: (
-    from: number
-  ) => (trigger: TriggerType, action: Action, timing?: number | null) => void;
+    from: number,
+    selectedTrigger: TriggerType
+  ) => (
+    action: Action,
+    timing?: Record<string, number | undefined>,
+    activeTrigger?: TriggerType
+  ) => void;
   removeMapping: (from: number, trigger: TriggerType) => void;
   updateLayer: (layerId: string, updates: Partial<Layer>) => void; // 追加
   reloadLayers: () => Promise<void>; // 追加
@@ -87,15 +92,16 @@ export function useLayerState(): UseLayerStateReturn {
 
   // マッピング保存
   const saveMapping = useCallback<UseLayerStateReturn["saveMapping"]>(
-    (from) => (trigger, action, timing) => {
+    (from, selectedTrigger) => (action, timing, activeTrigger) => {
       // triggerに応じたtimingMsを決定
+      const trigger = activeTrigger || selectedTrigger;
       const timingMs =
         trigger === "hold" || trigger === "doubleTap" ? timing : undefined;
 
       send("save-key-config", {
         layerId,
         from,
-        binding: { trigger, action, timingMs },
+        binding: { trigger, action, timingMs: timingMs?.[trigger] },
       });
       // 楽観的更新
       setLayers(upsert(layerId, from, trigger, action));

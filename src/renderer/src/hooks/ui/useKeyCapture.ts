@@ -2,9 +2,8 @@ import { MAX_VK_CODE, MIN_VK_CODE } from "@shared/constants/vk";
 import { useCallback, useState } from "react";
 
 export interface UseKeyCaptureReturn {
-  // keys は Props から渡されるため、戻り値には含めない（あるいは透過させる）
   holds: number[];
-  inputKey: (vk: number) => void; // addKey 相当だが、直接追加ではなく入力イベントとして扱う
+  inputKey: (vk: number) => void;
   removeKey: (vk: number) => void;
   onKeyDown: (vkCode: number) => void;
   onKeyUp: (vkCode: number) => void;
@@ -16,21 +15,14 @@ export interface UseKeyCaptureProps {
   onKeysChange?: (keys: number[]) => void;
 }
 
-/**
- * キーキャプチャのロジック（同時押し・連続押し管理）を抽出したフック
- * ステートレス（Controlled）になり、keys の管理は親に委譲する
- */
 export function useKeyCapture({
   currentKeys = [],
   onKeysChange,
 }: UseKeyCaptureProps = {}): UseKeyCaptureReturn {
-  // console.log("[DEBUG] useKeyCapture - render", { currentKeys });
   const [holds, setHolds] = useState<number[]>([]);
 
-  // 変更通知ヘルパー
   const notifyChange = useCallback(
     (newKeys: number[]) => {
-      // console.log("[DEBUG] useKeyCapture - notify change", { newKeys });
       onKeysChange?.(newKeys);
     },
     [onKeysChange]
@@ -64,7 +56,6 @@ export function useKeyCapture({
     (vkCode: number) => {
       setHolds((prev) => [...prev.filter((k) => k !== vkCode), vkCode]);
 
-      // 何も押されていない状態からの最初のキーなら置き換え、そうでなければ追加
       let next: number[];
       if (holds.length === 0) {
         next = [vkCode];

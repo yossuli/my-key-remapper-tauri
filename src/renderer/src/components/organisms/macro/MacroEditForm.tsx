@@ -9,8 +9,8 @@ import { SequenceEditor } from "@/components/organisms/editor/SequenceEditor";
 import { UnifiedActionEditor } from "@/components/organisms/editor/UnifiedActionEditor";
 import { HStack, VStack } from "@/components/template/Flex";
 import { ModalLayout } from "@/components/template/ModalLayout";
-import { useLayerState } from "@/hooks/useLayerState";
-import { useRemapControl } from "@/hooks/useRemapControl";
+import { useLayerState } from "@/hooks/api/useLayerState";
+import { useRemapControl } from "@/hooks/api/useRemapControl";
 import type { ActionSummaryHandlers, IdentifiedAction } from "./types";
 import { toAction, toIdentifiedAction } from "./utils";
 
@@ -98,20 +98,13 @@ export function MacroEditForm({
         </Button>
       </HStack>
 
-      <VStack gap={2}>
-        <label
-          className="flex flex-col gap-2 font-medium text-muted-foreground text-sm"
-          htmlFor="macro-name-input"
-        >
-          マクロ名
-          <Input
-            id="macro-name-input"
-            input-onChange={(e) => setName(e.target.value)}
-            input-placeholder="マクロ名を入力"
-            input-value={name}
-          />
-        </label>
-      </VStack>
+      <Input
+        id="macro-name-input"
+        input-onChange={(e) => setName(e.target.value)}
+        input-placeholder="マクロ名を入力"
+        input-value={name}
+        label="マクロ名"
+      />
 
       <div className="flex-1 overflow-auto rounded-md border border-border bg-background/50 p-4">
         <SequenceEditor

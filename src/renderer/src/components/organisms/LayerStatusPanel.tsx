@@ -6,7 +6,7 @@ import { Button } from "@/components/atoms/Button";
 import { Card } from "@/components/atoms/Card";
 import { Text } from "@/components/atoms/Text";
 import { HStack, VStack, Wrap } from "@/components/template/Flex";
-import { useLayerStack } from "@/hooks/useLayerStack";
+import { useLayerStack } from "@/hooks/ui/useLayerStack";
 
 interface LayerStatusPanelProps {
   /** 設定済みの全レイヤー */
