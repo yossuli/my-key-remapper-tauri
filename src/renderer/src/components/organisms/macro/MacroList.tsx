@@ -3,7 +3,7 @@ import { Copy, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
 import { DataGrid } from "@/components/atoms/DataGrid";
 import { Icon } from "@/components/atoms/Icon";
-import { Case, Default, Switch } from "@/components/control/Switch";
+import { Else, Ternary, Then } from "@/components/control/Ternary";
 import { HStack, VStack } from "@/components/template/Flex";
 
 interface MacroListProps {
@@ -22,8 +22,8 @@ export function MacroList({
   onDuplicate,
 }: MacroListProps) {
   return (
-    <Switch>
-      <Case when={macros.length === 0}>
+    <Ternary condition={macros.length === 0}>
+      <Then>
         <VStack
           className="items-center justify-center rounded-lg border border-border border-dashed p-8 text-muted-foreground"
           gap={4}
@@ -34,8 +34,8 @@ export function MacroList({
             新規マクロ作成
           </Button>
         </VStack>
-      </Case>
-      <Default>
+      </Then>
+      <Else>
         <VStack className="w-full" gap={4}>
           <HStack className="items-center justify-between">
             <h3 className="font-bold text-lg">マクロ一覧</h3>
@@ -57,39 +57,41 @@ export function MacroList({
           >
             {(macro, headers) => (
               <DataGrid.Row headers={headers}>
-                <Button
-                  className="w-full justify-start justify-self-start px-4 hover:bg-transparent"
-                  key="name"
-                  onClick={() => onEdit(macro.id)}
-                  title={macro.name}
-                  variant="ghost"
-                >
-                  {macro.name}
-                </Button>
-                <HStack className="justify-end" gap={2} key="actions">
+                {[
                   <Button
-                    onClick={() => onDuplicate(macro.id)}
-                    size="icon"
-                    title="複製"
+                    className="w-full justify-start justify-self-start px-4 hover:bg-transparent"
+                    key="name"
+                    onClick={() => onEdit(String(macro.id))}
+                    title={macro.name}
                     variant="ghost"
                   >
-                    <Icon icon={Copy} size="sm" />
-                  </Button>
-                  <Button
-                    className="text-destructive hover:bg-destructive/10"
-                    onClick={() => onDelete(macro.id)}
-                    size="icon"
-                    title="削除"
-                    variant="ghost"
-                  >
-                    <Icon icon={Trash2} size="sm" />
-                  </Button>
-                </HStack>
+                    {macro.name}
+                  </Button>,
+                  <HStack className="justify-end" gap={2} key="actions">
+                    <Button
+                      onClick={() => onDuplicate(String(macro.id))}
+                      size="icon"
+                      title="複製"
+                      variant="ghost"
+                    >
+                      <Icon icon={Copy} size="sm" />
+                    </Button>
+                    <Button
+                      className="text-destructive hover:bg-destructive/10"
+                      onClick={() => onDelete(String(macro.id))}
+                      size="icon"
+                      title="削除"
+                      variant="ghost"
+                    >
+                      <Icon icon={Trash2} size="sm" />
+                    </Button>
+                  </HStack>,
+                ]}
               </DataGrid.Row>
             )}
           </DataGrid>
         </VStack>
-      </Default>
-    </Switch>
+      </Else>
+    </Ternary>
   );
 }

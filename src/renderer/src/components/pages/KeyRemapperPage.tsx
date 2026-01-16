@@ -1,6 +1,7 @@
 import { KEYBOARD_LAYOUT, SWITCH_LAYOUT_RULE } from "@shared/constants";
 import type { TriggerType } from "@shared/types/remapConfig";
 import { useMemo, useState } from "react";
+import { RemapDisabler } from "@/components/control/RemapDisabler";
 import { Show } from "@/components/control/Show";
 import { AppHeader } from "@/components/organisms/AppHeader";
 import { UnifiedActionEditor } from "@/components/organisms/editor/UnifiedActionEditor";
@@ -47,7 +48,7 @@ export function KeyRemapperPage({ onNavigateMacros }: KeyRemapperPageProps) {
     removeMapping,
     ...layerActions
   } = useLayerState();
-  const { isActive, ...remapActions } = useRemapControl();
+  const { isActive, toggleActive } = useRemapControl();
 
   // UI状態
   const [editingKey, setEditingKey] = useState<number | null>(null);
@@ -67,7 +68,6 @@ export function KeyRemapperPage({ onNavigateMacros }: KeyRemapperPageProps) {
   };
 
   const handleEditorClose = () => {
-    remapActions.enableRemap();
     setEditingKey(null);
   };
 
@@ -84,7 +84,7 @@ export function KeyRemapperPage({ onNavigateMacros }: KeyRemapperPageProps) {
             isActive={isActive} // 🆕 → 🔥 (E. App Header Control)
             onOpenMacros={onNavigateMacros}
             onOpenSettings={() => setIsSettingsOpen(true)} // 🆕 → 🔥 (E. App Header Control)
-            onToggleActive={remapActions.toggleActive} // 🆕 → 🔥 (E. App Header Control)
+            onToggleActive={toggleActive} // 🆕 → 🔥 (E. App Header Control)
             onToggleSimpleMode={() => setSimpleMode((prev) => !prev)} // 🆕 → 🔥 (E. App Header Control)
             simpleMode={simpleMode} // 🆕 → 🔥 (E. App Header Control)
           />
@@ -98,7 +98,6 @@ export function KeyRemapperPage({ onNavigateMacros }: KeyRemapperPageProps) {
               layerState={layerState} // 📦 → 🎁 (A. Layer Management Flow)
               layout={layout} // 🆕 → 🚌 (C. UI Configuration)
               mappingActions={mappingActions} // 📦 → 🎁 (B. Mapping & Remap Actions)
-              remapActions={remapActions} // 🆕 → 🚌 (D. Event Handlers)
               selectedTrigger={selectedTrigger} // 🆕 → 🚌 (D. Event Handlers)
               setEditingKey={setEditingKey} // 📦 → 🎁 (B. Mapping & Remap Actions)
               setSelectedTrigger={setSelectedTrigger} // 🆕 → 🚌🔥 (C. UI Configuration)
@@ -122,17 +121,20 @@ export function KeyRemapperPage({ onNavigateMacros }: KeyRemapperPageProps) {
 
       <ModalLayout onClose={handleEditorClose} value={editingKey}>
         {(e) => (
-          <UnifiedActionEditor
-            handleEditorClose={handleEditorClose} // 🆕 → 🧩🔥 (C. UI Configuration)
-            initialTrigger={selectedTrigger} // ∈ → 🧩🔥 (A. Layer Management Flow)
-            layerId={layerId} // ∈ → 🧩🔥 (A. Layer Management Flow)
-            layers={layers} // 🆕 → 🧩🔥 (C. UI Configuration)
-            layout={layout} // 🆕 → 🔥 (I. Key Editor Modal)
-            onOpenMacros={onNavigateMacros}
-            onRemove={() => removeMapping(e, selectedTrigger)} // 🆕 → 🔥 (I. Key Editor Modal)
-            onSave={saveMapping(e, selectedTrigger)}
-            targetVk={e} // 🆕 → 🔥 (I. Key Editor Modal)
-          />
+          <>
+            <RemapDisabler />
+            <UnifiedActionEditor
+              handleEditorClose={handleEditorClose} // 🆕 → 🧩🔥 (C. UI Configuration)
+              initialTrigger={selectedTrigger} // ∈ → 🧩🔥 (A. Layer Management Flow)
+              layerId={layerId} // ∈ → 🧩🔥 (A. Layer Management Flow)
+              layers={layers} // 🆕 → 🧩🔥 (C. UI Configuration)
+              layout={layout} // 🆕 → 🔥 (I. Key Editor Modal)
+              onOpenMacros={onNavigateMacros}
+              onRemove={() => removeMapping(e, selectedTrigger)} // 🆕 → 🔥 (I. Key Editor Modal)
+              onSave={saveMapping(e, selectedTrigger)}
+              targetVk={e} // 🆕 → 🔥 (I. Key Editor Modal)
+            />
+          </>
         )}
       </ModalLayout>
 

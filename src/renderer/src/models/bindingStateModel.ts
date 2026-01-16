@@ -86,13 +86,13 @@ export function actionToBindingState(action: Action): BindingState {
       }),
       mouseMove: (act) => ({
         actionType: "mouseMove",
-        mouseX: act.x ?? 0,
-        mouseY: act.y ?? 0,
+        mouseX: act.x,
+        mouseY: act.y,
       }),
       mouseClick: (act) => ({
         actionType: "mouseClick",
-        mouseX: act.x ?? 0,
-        mouseY: act.y ?? 0,
+        mouseX: act.x,
+        mouseY: act.y,
         mouseButton: act.button,
         clickCount: act.clickCount ?? 1,
       }),
@@ -139,15 +139,15 @@ export function convertBindingStateToAction(state: BindingState): Action {
       }),
       mouseClick: (s) => ({
         type: "mouseClick",
-        x: s.mouseX ?? 0,
-        y: s.mouseY ?? 0,
+        x: s.mouseX,
+        y: s.mouseY,
         button: s.mouseButton,
         clickCount: s.clickCount,
       }),
       mouseMove: (s) => ({
         type: "mouseMove",
-        x: s.mouseX ?? 0,
-        y: s.mouseY ?? 0,
+        x: s.mouseX,
+        y: s.mouseY,
       }),
       cursorReturn: (s) => ({
         type: "cursorReturn",
@@ -194,14 +194,14 @@ export function getInitialStateForType(type: ActionType): BindingState {
     case "mouseMove":
       return {
         actionType: "mouseMove",
-        mouseX: 0,
-        mouseY: 0,
+        mouseX: undefined,
+        mouseY: undefined,
       };
     case "mouseClick":
       return {
         actionType: "mouseClick",
-        mouseX: 0,
-        mouseY: 0,
+        mouseX: undefined,
+        mouseY: undefined,
         mouseButton: "left",
         clickCount: 1,
       };

@@ -5,7 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import {
   type BindingState,
   convertBindingStateToAction,
-} from "@/models/BindingState";
+} from "@/models/bindingStateModel";
 
 export interface UseKeyEditorActionsProps {
   state: BindingState;

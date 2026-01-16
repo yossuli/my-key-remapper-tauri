@@ -5,13 +5,19 @@ import { useState } from "react";
 import { Icon } from "@/components/atoms/Icon";
 import { Show } from "@/components/control/Show";
 import { KeyDisplay } from "@/components/molecules/display/KeyDisplay";
+import { EditorSection } from "@/components/molecules/EditorSection";
+import { ActionNumericInput } from "@/components/molecules/forms/ActionNumericInput";
 import { KeyRemapList } from "@/components/molecules/forms/KeyRemapList";
-import { TimingInput } from "@/components/molecules/forms/TimingInput";
 import { HStack, VStack } from "@/components/template/Flex";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import type { ActionSetters, RepeatConfig } from "@/hooks/ui/useBindingConfig";
-import type { RemapBindingState } from "@/models/BindingState";
+import {
+  type ActionSetters,
+  DEFAULT_REPEAT_DELAY_MS,
+  DEFAULT_REPEAT_INTERVAL_MS,
+  type RepeatConfig,
+} from "@/hooks/ui/useBindingConfig";
+import type { RemapBindingState } from "@/models/bindingStateModel";
 import type { LayoutType } from "@/types";
 
 interface RemapKeySectionProps {
@@ -31,8 +37,8 @@ export function RemapKeySection({
   state: {
     targetKeys,
     repeat = false,
-    repeatDelayMs = 500,
-    repeatIntervalMs = 100,
+    repeatDelayMs = DEFAULT_REPEAT_DELAY_MS,
+    repeatIntervalMs = DEFAULT_REPEAT_INTERVAL_MS,
   },
   setIsInputFocused,
   selectedTrigger,
@@ -103,39 +109,49 @@ export function RemapKeySection({
       </HStack>
 
       <Show condition={selectedTrigger === "hold"}>
-        <VStack className="border-t pt-4" gap={4}>
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              checked={localRepeat}
-              id="repeat-mode"
-              onCheckedChange={(checked) => {
-                handleRepeatChange(checked === true);
-              }}
-            />
-            <Label htmlFor="repeat-mode">長押し中リピート</Label>
-          </div>
-
+        <EditorSection
+          description="キーを押し続けている間、出力を自動的に繰り返します"
+          extra={
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                checked={localRepeat}
+                id="repeat-mode"
+                onCheckedChange={(checked) => {
+                  handleRepeatChange(checked === true);
+                }}
+              />
+              <Label className="cursor-pointer" htmlFor="repeat-mode">
+                リピートを有効化
+              </Label>
+            </div>
+          }
+          title="リピート設定"
+        >
           <Show condition={localRepeat}>
             <HStack className="items-end" gap={4}>
-              <TimingInput
-                defaultValue={500}
+              <ActionNumericInput
                 id="repeatDelay"
                 label="開始遅延 (ms)"
-                onValueChange={handleRepeatDelayChange}
-                setFocused={setIsInputFocused}
+                onValueChange={(val) =>
+                  handleRepeatDelayChange(val ?? DEFAULT_REPEAT_DELAY_MS)
+                }
+                placeholder={String(DEFAULT_REPEAT_DELAY_MS)}
+                setIsInputFocused={setIsInputFocused}
                 value={localRepeatDelayMs}
               />
-              <TimingInput
-                defaultValue={100}
+              <ActionNumericInput
                 id="repeatInterval"
                 label="間隔 (ms)"
-                onValueChange={handleRepeatIntervalChange}
-                setFocused={setIsInputFocused}
+                onValueChange={(val) =>
+                  handleRepeatIntervalChange(val ?? DEFAULT_REPEAT_INTERVAL_MS)
+                }
+                placeholder={String(DEFAULT_REPEAT_INTERVAL_MS)}
+                setIsInputFocused={setIsInputFocused}
                 value={localRepeatIntervalMs}
               />
             </HStack>
           </Show>
-        </VStack>
+        </EditorSection>
       </Show>
     </VStack>
   );

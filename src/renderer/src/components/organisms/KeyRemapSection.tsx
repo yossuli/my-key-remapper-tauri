@@ -8,6 +8,7 @@ import {
 } from "react";
 import { Button } from "@/components/atoms/Button";
 import { Icon } from "@/components/atoms/Icon";
+import { RemapDisabler } from "@/components/control/RemapDisabler";
 import { LayoutToggle } from "@/components/molecules/display/LayoutToggle";
 import { TriggerTabs } from "@/components/molecules/forms/TriggerTabs";
 import { KeyboardGrid } from "@/components/organisms/KeyboardGrid";
@@ -25,6 +26,7 @@ import type { UseLayerStackReturn } from "@/hooks/ui/useLayerStack";
 import { useQuickRemap } from "@/hooks/ui/useQuickRemap";
 import type { KeyboardLayout, LayoutType } from "@/types";
 import { cn } from "@/utils/cn";
+import { Show } from "../control/Show";
 
 export type LayerActions = Pick<
   UseLayerStateReturn,
@@ -56,9 +58,6 @@ interface KeyRemapSectionProps {
   // Mapping actions
   mappingActions: MappingActions;
 
-  // Remap actions
-  remapActions: RemapActions;
-
   // UI state
   layout: LayoutType;
   keyboardLayout: KeyboardLayout;
@@ -73,7 +72,6 @@ export function KeyRemapSection({
   layerState,
   layerActions,
   mappingActions,
-  remapActions,
   layout,
   keyboardLayout,
   bindings,
@@ -100,24 +98,18 @@ export function KeyRemapSection({
       startQuickEditing(vk);
       return;
     }
-    remapActions.disableRemap();
     setEditingKey(vk);
   };
 
   const onToggleQuickEditMode = useCallback(() => {
-    setIsQuickEditMode((prev) => {
-      const next = !prev;
-      if (next) {
-        remapActions.disableRemap();
-      } else {
-        remapActions.enableRemap();
-      }
-      return next;
-    });
-  }, [remapActions]);
+    setIsQuickEditMode((prev) => !prev);
+  }, []);
 
   return (
     <VStack as="section" gap={4}>
+      <Show condition={isQuickEditMode}>
+        <RemapDisabler />
+      </Show>
       <HStack className="justify-between gap-4">
         <LayerTabs
           layerActions={layerActions}

@@ -4,13 +4,12 @@ import { useState } from "react";
 import { Button } from "@/components/atoms/Button";
 import { Icon } from "@/components/atoms/Icon";
 import { Input } from "@/components/atoms/Input";
-import { Show } from "@/components/control/Show";
+import { RemapDisabler } from "@/components/control/RemapDisabler";
 import { SequenceEditor } from "@/components/organisms/editor/SequenceEditor";
 import { UnifiedActionEditor } from "@/components/organisms/editor/UnifiedActionEditor";
 import { HStack, VStack } from "@/components/template/Flex";
 import { ModalLayout } from "@/components/template/ModalLayout";
 import { useLayerState } from "@/hooks/api/useLayerState";
-import { useRemapControl } from "@/hooks/api/useRemapControl";
 import type { ActionSummaryHandlers, IdentifiedAction } from "./types";
 import { toAction, toIdentifiedAction } from "./utils";
 
@@ -34,19 +33,16 @@ export function MacroEditForm({
   );
   const [macroId] = useState(initialMacro?.id ?? crypto.randomUUID());
   const { layers } = useLayerState();
-  const { disableRemap, enableRemap } = useRemapControl();
 
   // アクション編集用のステート
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [isAdding, setIsAdding] = useState(false);
 
   const handleAddStart = () => {
-    disableRemap();
     setIsAdding(true);
   };
 
   const handleEditStart = (index: number) => {
-    disableRemap();
     setEditingIndex(index);
   };
 
@@ -67,7 +63,6 @@ export function MacroEditForm({
   };
 
   const handleCloseModal = () => {
-    enableRemap();
     setIsAdding(false);
     setEditingIndex(null);
   };
@@ -114,12 +109,6 @@ export function MacroEditForm({
           onDeleteAction={handleDeleteAction}
           onEditAction={handleEditStart}
         />
-
-        <Show condition={actions.length === 0}>
-          <div className="py-8 text-center text-muted-foreground">
-            アクションがありません。下部ボタンから追加してください。
-          </div>
-        </Show>
       </div>
 
       <div className="border-border border-t pt-4">
@@ -138,14 +127,17 @@ export function MacroEditForm({
         value={isAdding || editingIndex !== null}
       >
         {() => (
-          <UnifiedActionEditor
-            currentMacroId={macroId}
-            handleEditorClose={handleCloseModal}
-            initialAction={initialAction}
-            layers={layers} // TODO: レイアウトをページから引き継ぐ
-            layout="JIS"
-            onSave={(action) => handleSaveStep(action)}
-          />
+          <>
+            <RemapDisabler />
+            <UnifiedActionEditor
+              currentMacroId={macroId}
+              handleEditorClose={handleCloseModal}
+              initialAction={initialAction}
+              layers={layers} // TODO: レイアウトをページから引き継ぐ
+              layout="JIS"
+              onSave={(action) => handleSaveStep(action)}
+            />
+          </>
         )}
       </ModalLayout>
     </VStack>

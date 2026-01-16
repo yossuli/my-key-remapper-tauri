@@ -5,25 +5,35 @@ import {
   objectiveMergeSwitch,
   objectiveSwitch,
 } from "@shared/utils/objectiveSwitch";
+import {
+  Keyboard,
+  Layers,
+  MousePointer2,
+  Move,
+  Play,
+  RotateCcw,
+  Timer,
+} from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button";
 import { Select } from "@/components/atoms/Select";
 import { ToggleButton } from "@/components/atoms/ToggleButton";
 import { Show } from "@/components/control/Show";
+import { EditorSection } from "@/components/molecules/EditorSection";
+import { ActionNumericInput } from "@/components/molecules/forms/ActionNumericInput";
 import {
   ActionSelector,
   ActionSelectorContent,
 } from "@/components/molecules/forms/ActionSelector";
 import { LayerSelector } from "@/components/molecules/forms/LayerSelector";
 import { MousePositionInput } from "@/components/molecules/forms/MousePositionInput";
-import { TimingInput } from "@/components/molecules/forms/TimingInput";
 
 import { RemapKeySection } from "@/components/organisms/editor/RemapKeySection";
 import { HStack, VStack } from "@/components/template/Flex";
 import { useMacros } from "@/hooks/api/useMacros";
 import type { ActionSetters } from "@/hooks/ui/useBindingConfig";
 import { useMousePosition } from "@/hooks/ui/useMousePosition";
-import type { BindingState } from "@/models/BindingState";
+import type { BindingState } from "@/models/bindingStateModel";
 import type { LayoutType } from "@/types";
 import { getLayerDescription } from "@/utils/getLayerDescription";
 
@@ -87,17 +97,15 @@ export function ActionSettingsSection({
     );
   };
 
-  const [mouseX, setMouseX] = useState<number>(
-    (state.actionType === "mouseMove" || state.actionType === "mouseClick") &&
-      state.mouseX !== undefined
+  const [mouseX, setMouseX] = useState<number | undefined>(
+    state.actionType === "mouseMove" || state.actionType === "mouseClick"
       ? state.mouseX
-      : 0
+      : undefined
   );
-  const [mouseY, setMouseY] = useState<number>(
-    (state.actionType === "mouseMove" || state.actionType === "mouseClick") &&
-      state.mouseY !== undefined
+  const [mouseY, setMouseY] = useState<number | undefined>(
+    state.actionType === "mouseMove" || state.actionType === "mouseClick"
       ? state.mouseY
-      : 0
+      : undefined
   );
   const [mouseButton, setMouseButton] = useState<"left" | "right" | "middle">(
     state.actionType === "mouseClick" ? state.mouseButton : "left"
@@ -165,40 +173,52 @@ export function ActionSettingsSection({
         {
           remap: (s) => (
             <ActionSelectorContent value="remap">
-              <RemapKeySection
-                actionSetters={actionSetters}
-                isInputFocused={isInputFocused}
-                layout={layout}
-                selectedTrigger={selectedTrigger}
-                setIsInputFocused={setIsInputFocused}
-                state={s}
-                targetVk={targetVk}
-              />
+              <EditorSection
+                description="指定したキーまたは一連のキーを出力します"
+                icon={Keyboard}
+                title="キー再割り当て"
+              >
+                <RemapKeySection
+                  actionSetters={actionSetters}
+                  isInputFocused={isInputFocused}
+                  layout={layout}
+                  selectedTrigger={selectedTrigger}
+                  setIsInputFocused={setIsInputFocused}
+                  state={s}
+                  targetVk={targetVk}
+                />
+              </EditorSection>
             </ActionSelectorContent>
           ),
           "layerToggle-layerMomentary": (s) => (
             <ActionSelectorContent value={["layerToggle", "layerMomentary"]}>
-              <LayerSelector
+              <EditorSection
                 description={getLayerDescription(actionType)}
-                layers={layers}
-                onLayerChange={(layerId) => {
-                  if (actionType === "layerToggle") {
-                    actionSetters.setLayerAction("toggle", layerId);
-                  } else {
-                    actionSetters.setLayerAction("momentary", layerId);
-                  }
-                }}
-                selectedLayerId={s.selectedLayerId}
-              />
+                icon={Layers}
+                title="レイヤー切り替え"
+              >
+                <LayerSelector
+                  description=""
+                  layers={layers}
+                  onLayerChange={(layerId) => {
+                    if (actionType === "layerToggle") {
+                      actionSetters.setLayerAction("toggle", layerId);
+                    } else {
+                      actionSetters.setLayerAction("momentary", layerId);
+                    }
+                  }}
+                  selectedLayerId={s.selectedLayerId}
+                />
+              </EditorSection>
             </ActionSelectorContent>
           ),
           mouseMove: () => (
             <ActionSelectorContent value="mouseMove">
-              <VStack gap={4}>
-                <p className="text-muted-foreground text-sm">
-                  マウスカーソルを指定座標に移動します
-                </p>
-
+              <EditorSection
+                description="マウスカーソルを指定座標に移動します"
+                icon={Move}
+                title="マウス移動"
+              >
                 <MousePositionInput
                   idPrefix="move"
                   mouseHandlers={{
@@ -220,16 +240,16 @@ export function ActionSettingsSection({
                   }}
                   setIsInputFocused={setIsInputFocused}
                 />
-              </VStack>
+              </EditorSection>
             </ActionSelectorContent>
           ),
           mouseClick: () => (
             <ActionSelectorContent value="mouseClick">
-              <VStack className="w-full justify-center" gap={4}>
-                <p className="text-muted-foreground text-sm">
-                  指定座標をクリックします
-                </p>
-
+              <EditorSection
+                description="指定座標をクリックします"
+                icon={MousePointer2}
+                title="マウスクリック"
+              >
                 <MousePositionInput
                   idPrefix="click"
                   mouseHandlers={{
@@ -302,39 +322,42 @@ export function ActionSettingsSection({
                     />
                   </VStack>
                 </MousePositionInput>
-              </VStack>
+              </EditorSection>
             </ActionSelectorContent>
           ),
 
           cursorReturn: () => (
             <ActionSelectorContent value="cursorReturn">
-              <VStack gap={4}>
-                <p className="text-muted-foreground text-sm">
-                  キー押下時のカーソル位置を記録し、指定時間後に戻ります
-                </p>
-
-                <TimingInput
-                  defaultValue={DEFAULT_CURSOR_RETURN_DELAY_MS}
+              <EditorSection
+                description="キー押下時のカーソル位置を記録し、指定時間後に戻ります"
+                icon={RotateCcw}
+                title="カーソル復帰"
+              >
+                <ActionNumericInput
                   id="cursorReturnDelay"
                   label="遅延時間 (ms)"
                   onValueChange={(val) => {
-                    if (val !== undefined) {
-                      setCursorReturnDelayMs(val);
-                      actionSetters.setCursorReturnAction(val);
-                    }
+                    setCursorReturnDelayMs(
+                      val ?? DEFAULT_CURSOR_RETURN_DELAY_MS
+                    );
+                    actionSetters.setCursorReturnAction(
+                      val ?? DEFAULT_CURSOR_RETURN_DELAY_MS
+                    );
                   }}
-                  setFocused={setIsInputFocused}
+                  placeholder={String(DEFAULT_CURSOR_RETURN_DELAY_MS)}
+                  setIsInputFocused={setIsInputFocused}
                   value={cursorReturnDelayMs}
                 />
-              </VStack>
+              </EditorSection>
             </ActionSelectorContent>
           ),
           macro: (s) => (
             <ActionSelectorContent value="macro">
-              <VStack gap={4}>
-                <p className="text-muted-foreground text-sm">
-                  事前に定義したマクロ（一連の操作）を実行します
-                </p>
+              <EditorSection
+                description="事前に定義したマクロ（一連の操作）を実行します"
+                icon={Play}
+                title="マクロ実行"
+              >
                 <HStack className="items-end" gap={2}>
                   <div className="flex-1">
                     <Select
@@ -353,28 +376,27 @@ export function ActionSettingsSection({
                     </Button>
                   </Show>
                 </HStack>
-              </VStack>
+              </EditorSection>
             </ActionSelectorContent>
           ),
           delay: (s) => (
             <ActionSelectorContent value="delay">
-              <VStack gap={4}>
-                <p className="text-muted-foreground text-sm">
-                  指定した時間（ミリ秒）待機します
-                </p>
-                <TimingInput
-                  defaultValue={500}
+              <EditorSection
+                description="指定した時間（ミリ秒）待機します"
+                icon={Timer}
+                title="待機"
+              >
+                <ActionNumericInput
                   id="delayActionInput"
                   label="待機時間 (ms)"
                   onValueChange={(val) => {
-                    if (val !== undefined) {
-                      actionSetters.setDelayAction(val);
-                    }
+                    actionSetters.setDelayAction(val ?? DEFAULT_DELAY_MS);
                   }}
-                  setFocused={setIsInputFocused}
+                  placeholder="500"
+                  setIsInputFocused={setIsInputFocused}
                   value={s.delayActionMs}
                 />
-              </VStack>
+              </EditorSection>
             </ActionSelectorContent>
           ),
         },

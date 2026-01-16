@@ -6,10 +6,10 @@ import {
   type BindingState,
   convertBindingStateToAction,
   createInitialBindingState,
-} from "@/models/BindingState";
+} from "@/models/bindingStateModel";
 
-const DEFAULT_REPEAT_DELAY_MS = 500;
-const DEFAULT_REPEAT_INTERVAL_MS = 100;
+export const DEFAULT_REPEAT_DELAY_MS = 500;
+export const DEFAULT_REPEAT_INTERVAL_MS = 100;
 
 export interface RepeatConfig {
   enabled: boolean;
@@ -20,10 +20,10 @@ export interface RepeatConfig {
 export interface ActionSetters {
   setRemapAction: (keys: number[], repeat?: RepeatConfig) => void;
   setLayerAction: (type: "toggle" | "momentary", layerId: string) => void;
-  setMouseMoveAction: (x: number, y: number) => void;
+  setMouseMoveAction: (x: number | undefined, y: number | undefined) => void;
   setMouseClickAction: (
-    x: number,
-    y: number,
+    x: number | undefined,
+    y: number | undefined,
     button: "left" | "right" | "middle",
     clickCount: number
   ) => void;

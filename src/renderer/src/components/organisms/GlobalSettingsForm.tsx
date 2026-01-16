@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/atoms/Button";
-import { Input } from "@/components/atoms/Input";
 import { Text } from "@/components/atoms/Text";
+import { EditorSection } from "@/components/molecules/EditorSection";
+import { ActionNumericInput } from "@/components/molecules/forms/ActionNumericInput";
 import { HStack, VStack } from "@/components/template/Flex";
 import { useGlobalSettings } from "@/hooks/api/useGlobalSettings";
 
@@ -33,71 +34,55 @@ export function GlobalSettingsForm() {
       defaultTapIntervalMs: tapIntervalMs,
     });
   };
-
   const hasChanges =
     holdThresholdMs !== globalSettings.defaultHoldThresholdMs ||
     tapIntervalMs !== globalSettings.defaultTapIntervalMs;
 
-  return (
-    <VStack gap={4}>
-      <VStack gap={1}>
-        <Text weight="semibold">タイミング設定</Text>
-        <Text size="sm" variant="muted">
-          すべてのキーのデフォルトの判定時間を設定します。個別のキーで設定されている場合はそちらが優先されます。
-        </Text>
-      </VStack>
+  const handleSet =
+    (fn: (v: number) => void) => (value: number | undefined) => {
+      if (value !== undefined) {
+        fn(value);
+      }
+    };
 
-      <VStack gap={3}>
-        <VStack gap={1}>
-          <Input
+  return (
+    <div className="p-1">
+      <EditorSection
+        description="すべてのキーのデフォルトの判定時間を設定します。個別のキーで設定されている場合はそちらが優先されます。"
+        title="タイミング設定"
+      >
+        <VStack gap={4}>
+          <ActionNumericInput
             id="global-hold-threshold"
-            input-min="1"
-            input-onChange={(e) => {
-              const val = e.target.value;
-              const num = Number.parseInt(val, 10);
-              if (!Number.isNaN(num) && num > 0) {
-                setHoldThresholdMs(num);
-              }
-            }}
-            input-type="number"
-            input-value={holdThresholdMs}
             label="長押し判定時間 (ms)"
+            onValueChange={handleSet(setHoldThresholdMs)}
+            value={holdThresholdMs}
           />
           <Text size="xs" variant="muted">
             キーを長押しと判定するまでの時間
           </Text>
-        </VStack>
 
-        <VStack gap={1}>
-          <Input
+          <ActionNumericInput
             id="global-tap-interval"
-            input-min="1"
-            input-onChange={(e) => {
-              const val = e.target.value;
-              const num = Number.parseInt(val, 10);
-              if (!Number.isNaN(num) && num > 0) {
-                setTapIntervalMs(num);
-              }
-            }}
-            input-type="number"
-            input-value={tapIntervalMs}
             label="ダブルタップ判定間隔 (ms)"
+            onValueChange={handleSet(setTapIntervalMs)}
+            value={tapIntervalMs}
           />
           <Text size="xs" variant="muted">
             2回のタップをダブルタップと判定する間隔
           </Text>
-        </VStack>
-      </VStack>
 
-      <HStack className="justify-end" gap={2}>
-        <Button
-          disabled={!hasChanges}
-          label="保存"
-          onClick={handleSave}
-          size="default"
-          variant="default"
-        />
-      </HStack>
-    </VStack>
+          <HStack className="justify-end pt-2" gap={2}>
+            <Button
+              disabled={!hasChanges}
+              label="設定を適用"
+              onClick={handleSave}
+              size="default"
+              variant="default"
+            />
+          </HStack>
+        </VStack>
+      </EditorSection>
+    </div>
   );
 }

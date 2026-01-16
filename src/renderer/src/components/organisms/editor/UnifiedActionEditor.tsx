@@ -14,7 +14,7 @@ import { useBindingConfig } from "@/hooks/ui/useBindingConfig";
 import {
   type BindingState,
   createBindingStateFromAction,
-} from "@/models/BindingState";
+} from "@/models/bindingStateModel";
 import type { LayoutType } from "@/types";
 
 export interface UnifiedActionEditorProps {
