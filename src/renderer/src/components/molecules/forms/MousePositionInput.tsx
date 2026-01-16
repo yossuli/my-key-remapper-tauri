@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/atoms/Button";
-import { Input } from "@/components/atoms/Input";
 import { Center, VStack } from "@/components/template/Flex";
 import { useScreenSize } from "@/hooks/ui/useScreenSize";
+import { ActionNumericInput } from "./ActionNumericInput";
 
 interface MouseState {
   x: number | undefined;
@@ -12,8 +12,8 @@ interface MouseState {
 }
 
 interface MouseHandlers {
-  setMouseX: (x: number) => void;
-  setMouseY: (y: number) => void;
+  setMouseX: (x: number | undefined) => void;
+  setMouseY: (y: number | undefined) => void;
   onGetMousePosition: () => void;
 }
 
@@ -54,25 +54,19 @@ export function MousePositionInput({
     <Center>
       <div className="grid w-fit grid-cols-[auto_160px_auto] items-stretch gap-6">
         <VStack className="justify-center" gap={2}>
-          <Input
-            horizontal
+          <ActionNumericInput
             id={`${idPrefix}-x`}
-            input-className="w-20 font-mono text-right"
-            input-onChange={(e) => setMouseX(Number(e.target.value))}
-            input-type="number"
-            input-value={x?.toString() ?? "0"}
             label="X"
-            setFocused={setIsInputFocused}
+            onValueChange={setMouseX}
+            setIsInputFocused={setIsInputFocused}
+            value={x}
           />
-          <Input
-            horizontal
+          <ActionNumericInput
             id={`${idPrefix}-y`}
-            input-className="w-20 font-mono text-right"
-            input-onChange={(e) => setMouseY(Number(e.target.value))}
-            input-type="number"
-            input-value={y?.toString() ?? "0"}
             label="Y"
-            setFocused={setIsInputFocused}
+            onValueChange={setMouseY}
+            setIsInputFocused={setIsInputFocused}
+            value={y}
           />
         </VStack>
 

@@ -83,17 +83,21 @@ export async function executeActionInternal(
       await new Promise((resolve) => setTimeout(resolve, action.delayMs));
       break;
 
-    case "mouseMove":
-      moveMouse(action.x ?? 0, action.y ?? 0);
+    case "mouseMove": {
+      const current = getCursorPosition();
+      moveMouse(action.x ?? current.x, action.y ?? current.y);
       break;
-    case "mouseClick":
-      clickAt(
-        action.x ?? 0,
-        action.y ?? 0,
+    }
+    case "mouseClick": {
+      const current = getCursorPosition();
+      await clickAt(
+        action.x ?? current.x,
+        action.y ?? current.y,
         action.button,
         action.clickCount ?? 1
       );
       break;
+    }
     case "layerToggle":
       remapRules.setLayer(action.layerId);
       break;

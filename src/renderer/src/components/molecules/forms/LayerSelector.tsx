@@ -1,8 +1,8 @@
 import type { Layer } from "@shared/types/remapConfig";
 import { Layers } from "lucide-react";
-import { Icon } from "@/components/atoms/Icon";
 import { Select } from "@/components/atoms/Select";
 import { Show } from "@/components/control/Show";
+import { IconLabel } from "@/components/molecules/IconLabel";
 import { VStack } from "@/components/template/Flex";
 
 interface LayerSelectorProps {
@@ -24,12 +24,7 @@ export function LayerSelector({
     <VStack className={className} gap={2}>
       <Select
         id="selectLayer"
-        label={
-          <>
-            <Icon icon={Layers} />
-            対象レイヤー
-          </>
-        }
+        label={<IconLabel icon={Layers} label="対象レイヤー" />}
         label-className="flex items-center gap-1 font-medium text-muted-foreground text-xs"
         onValueChange={(e) => onLayerChange(e)}
         options={layers.map((layer) => ({

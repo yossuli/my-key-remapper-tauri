@@ -3,6 +3,7 @@
 import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/atoms/Button";
+import { HandleEmpty } from "@/components/control/HandleEmpty";
 import { Show } from "@/components/control/Show";
 import { VStack } from "@/components/template/Flex";
 import { useGetPressedKeys, useReleaseAllKeys } from "@/hooks/api/useInvoke";
@@ -62,23 +63,25 @@ export function PressedKeysPanel({
           <RefreshCw className="h-4 w-4" />
         </Button>
       </div>
-      <Show condition={pressedKeys.length > 0}>
-        <div className="flex flex-wrap gap-2">
-          {pressedKeys.map((vk) => (
+      <div className="flex flex-wrap gap-2">
+        <HandleEmpty
+          array={pressedKeys.map((vk) => ({ id: vk }))}
+          empty={
+            <div className="w-full py-2 text-center font-medium text-muted-foreground text-xs">
+              押されているキーはありません
+            </div>
+          }
+        >
+          {({ id: vk }) => (
             <div
-              className="rounded-md bg-destructive/20 px-2 py-1 font-mono text-destructive text-xs"
+              className="rounded bg-destructive/10 px-2 py-1 font-mono text-destructive text-xs ring-1 ring-destructive/20"
               key={vk}
             >
               {getKeyLabel([vk], layout)}
             </div>
-          ))}
-        </div>
-      </Show>
-      <Show condition={pressedKeys.length === 0}>
-        <div className="text-center text-muted-foreground text-xs">
-          押されているキーはありません
-        </div>
-      </Show>
+          )}
+        </HandleEmpty>
+      </div>
       <Show condition={pressedKeys.length > 0}>
         <Button
           className="w-full"

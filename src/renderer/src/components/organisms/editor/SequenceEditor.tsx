@@ -1,4 +1,5 @@
 import { Reorder } from "framer-motion";
+import { HandleEmpty } from "@/components/control/HandleEmpty";
 import { ActionItem } from "@/components/molecules/ActionItem";
 import type { ActionSummaryHandlers, IdentifiedAction } from "../macro/types";
 
@@ -25,21 +26,30 @@ export function SequenceEditor({
       onReorder={onChange}
       values={actions}
     >
-      {actions.map((action, index) => (
-        <Reorder.Item
-          className="flex select-none items-center gap-3 rounded-md border border-border bg-secondary/30 p-2 transition-colors has-[[data-action=edit]:hover]:bg-secondary"
-          key={action._uiId} // インデックスではなく不変のIDを使用
-          value={action}
-        >
-          <ActionItem
-            action={action}
-            actionSummaryHandlers={actionSummaryHandlers}
-            index={index}
-            onDelete={() => onDeleteAction(index)}
-            onEdit={() => onEditAction(index)}
-          />
-        </Reorder.Item>
-      ))}
+      <HandleEmpty
+        array={actions.map((a, i) => ({ ...a, id: a._uiId, _index: i }))}
+        empty={
+          <div className="py-8 text-center text-muted-foreground">
+            アクションがありません。下部ボタンから追加してください。
+          </div>
+        }
+      >
+        {(action) => (
+          <Reorder.Item
+            className="flex select-none items-center gap-3 rounded-md border border-border bg-secondary/30 p-2 transition-colors has-[[data-action=edit]:hover]:bg-secondary"
+            key={action._uiId}
+            value={action}
+          >
+            <ActionItem
+              action={action}
+              actionSummaryHandlers={actionSummaryHandlers}
+              index={action._index}
+              onDelete={() => onDeleteAction(action._index)}
+              onEdit={() => onEditAction(action._index)}
+            />
+          </Reorder.Item>
+        )}
+      </HandleEmpty>
     </Reorder.Group>
   );
 }

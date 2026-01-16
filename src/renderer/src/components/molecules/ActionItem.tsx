@@ -39,13 +39,18 @@ export function ActionItem({
       remap: (a) =>
         `キー入力: **${a.keys.join(" + ")}**${a.repeat ? " ((リピート))" : ""}`,
       delay: (a) => `待機: **${a.delayMs}ms**`,
-      mouseMove: (a) => `マウス移動: **X:${a.x}, Y:${a.y}**`,
+      mouseMove: (a) =>
+        `マウス移動: **X:${a.x ?? "維持"}, Y:${a.y ?? "維持"}**`,
       mouseClick: (a) =>
         `クリック: **${a.button}**${
           (a.clickCount ?? 1) > 1 ? ` ((x${a.clickCount}))` : ""
+        }${
+          a.x !== undefined || a.y !== undefined
+            ? ` ((X:${a.x ?? "維持"}, Y:${a.y ?? "維持"}))`
+            : " ((現在地))"
         }`,
-      layerToggle: (a) => `レイヤー切替: [[${a.layerId}]]`,
-      layerMomentary: (a) => `レイヤーホールド: [[${a.layerId}]]`,
+      layerToggle: (a) => `レイヤー切替: **[[${a.layerId}]]**`,
+      layerMomentary: (a) => `レイヤー一時切替: **[[${a.layerId}]]**`,
       macro: (a) => {
         const macroName = macros.find((m) => m.id === a.macroId)?.name;
         const displayText = `${macroName ?? a.macroId}`;
