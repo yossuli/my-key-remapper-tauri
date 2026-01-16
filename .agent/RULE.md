@@ -192,22 +192,81 @@ src/
 - **[Workflow-030] UI コンポーネントの使用ルール (No Direct UI Imports)**: UI ライブラリを直接インポートせず、プロジェクト固有のラッパー（components/atoms 等）を使用するルール。 (`.agent/workflows/030.md`)
 - **[Workflow-031] 厳格なコードレビューと修正計画策定**: 大規模変更や指摘時に、文書化・監査・修正計画の 3 フェーズで確実に品質を担保する手順。 (`.agent/workflows/031.md`)
 - **[Workflow-032] 否定・停止指示の意図確認プロセス**: ユーザーの `n` やリバートを安易に「拒否」と取らず、真意（停止、時期尚早、内容不備）を確認する手順。 (`.agent/workflows/032.md`)
+- **[Workflow-000] 普遍的な知見のルール化**: 作業中に発見した有用な知見やパターンをドキュメント化し、ナレッジとして蓄積する手順。 (`.agent/workflows/000.md`)
+  - 🏷️ **Tags**: `knowledge`, `documentation`, `rules`, `insight`, `pattern`
+- **[Workflow-002] スプレッド演算子を使った分割代入でのグループ化**: 呼び出し側でスプレッド演算子を使い、必要な値だけを取り出して残りを自動的にグループ化することで、中間オブジェクト生成を省略する。 (`.agent/workflows/002.md`)
+  - 🏷️ **Tags**: `destructuring`, `spread`, `grouping`, `redundant`, `clean-code`
+- **[Fix-003] 適切なコミット運用と実行トラブルシューティング**: 原則として一括ステージングを避け、論理的な変更単位でコミットを行う手順。環境依存のトラブル回避も含む。 (`.agent/workflows/003.md`)
+  - 🏷️ **Tags**: `commit`, `git`, `troubleshooting`, `staging`, `atomic`
+- **[Workflow-005] Props Grouping の適用判断**: Props をグループ化すべきか個別に渡すべきかの判断基準と、適切な適用方法。 (`.agent/workflows/005.md`)
+  - 🏷️ **Tags**: `props`, `grouping`, `decision`, `drilling`, `best-practice`
+- **[Workflow-006] 型定義の配置・整理ルール**: 型定義の配置場所 (Parent/Child/Hook) とデータフロー (Parent->Child) に関する絶対原則。トレーサビリティを最優先する。 (`.agent/workflows/006.md`)
+  - 🏷️ **Tags**: `types`, `location`, `directory-structure`, `consistency`, `data-flow`
+- **[Workflow-007] カリー化による Prop 渡しの簡略化**: 特定の引数を固定した関数を返す（カリー化）ことで、Props に渡す際の記述を簡潔にする手順。 (`.agent/workflows/007.md`)
+  - 🏷️ **Tags**: `currying`, `callback`, `performance`, `arrow-function`, `clean-code`
+- **[Workflow-008] 制御コンポーネントによる宣言的な条件付きレンダリング**: 三項演算子の代わりに `With` コンポーネント等を使用して、宣言的に条件付きレンダリングを行う手順。 (`.agent/workflows/008.md`)
+  - 🏷️ **Tags**: `conditional-rendering`, `jsx`, `control-components`, `declarative`, `clean-code`
+- **[Workflow-009] データパス指向のプロップスフロー可視化とリファクタリング**: プロップス伝播表を「データ経路」で分割して可視化し、Drill の行き止まりを排除しつつリファクタリングを行う手順。 (`.agent/workflows/009.md`)
+  - 🏷️ **Tags**: `props`, `visualization`, `data-flow`, `refactoring`, `prop-drilling`
+- **[Workflow-010] 大規模機能の実装計画策定**: 後戻りを防ぐため、コードスニペット、UX 詳細、アーキテクチャ設計（関心の分離）を含む「Source of Truth」レベルの計画書を作成するガイドライン。 (`.agent/workflows/010.md`)
+  - 🏷️ **Tags**: `planning`, `implementation`, `architecture`, `source-of-truth`, `design`
+- **[Workflow-011] 回帰バグ（Regression）の調査と修正計画策定**: 以前動作していた機能が破損した際、Git ログから原因コミットと Diff を特定し、実装計画に反映させる手順。 (`.agent/workflows/011.md`)
+  - 🏷️ **Tags**: `bug-fix`, `regression`, `git-log`, `investigation`, `plan`
+- **[Workflow-012] アーキテクチャ図解（Mermaid）のベストプラクティスガイド**: アーキテクチャ図を Mermaid で記述する際のベストプラクティスとガイドライン。 (`.agent/workflows/012.md`)
+  - 🏷️ **Tags**: `diagram`, `mermaid`, `architecture`, `visualization`, `best-practice`
+- **[Workflow-013] AI 応答の日本語化徹底チェックリスト**: AI 応答の日本語化を徹底するためのチェックリスト。 (`.agent/workflows/013.md`)
+  - 🏷️ **Tags**: `japanese`, `translation`, `response`, `checklist`, `consistency`
+- **[Workflow-014] マジックナンバーの定数化 (Refactor Magic Numbers)**: コード内にハードコードされた数値や文字列リテラル（マジックナンバー）を発見し、適切な定数として定義し直す手順です。 (`.agent/workflows/014.md`)
+  - 🏷️ **Tags**: `magic-number`, `constants`, `refactoring`, `hard-coded`
+- **[Workflow-015] 設定項目の追加**: 設定追加時の変更漏れ（型、初期値、マイグレーション等）を防ぐ手順。 (`.agent/workflows/015.md`)
+  - 🏷️ **Tags**: `config`, `settings`, `migration`, `types`, `boilerplate`
+- **[Workflow-018] Strict Linter/Type Fix**: 型エラーや Lint エラー修正時の厳格なルール（biome-ignore 禁止など）。 (`.agent/workflows/018.md`)
+  - 🏷️ **Tags**: `lint`, `type-check`, `biome`, `strict`, `fix`
+- **[Workflow-log] 作業ログの運用手順**: `log.md` の記録形式と自己修正。 (`.agent/workflows/log_management.md`)
+  - 🏷️ **Tags**: `log`, `history`, `record`, `self-correction`, `process`
+- **[Workflow-seed] 知見の管理 (Seed Management)**: `seeds.md` の記録と警告ヘッダーの規約。 (`.agent/workflows/seed_management.md`)
+  - 🏷️ **Tags**: `seed`, `knowledge-base`, `learning`, `improvement`, `record`
+- **[Workflow-next] next**: 迷った時のための next。 (`.agent/workflows/next.md`)
+  - 🏷️ **Tags**: `stuck`, `guidance`, `help`, `direction`, `decision`
+- **[Workflow-020] 議論から計画への昇格**: 複雑な提案をチャットから構造化された計画書作成へ切り替える手順。 (`.agent/workflows/020.md`)
+  - 🏷️ **Tags**: `discussion`, `plan`, `promotion`, `structure`, `proposal`
+- **[Workflow-023] .agent/workflows 編集時のドラフト運用**: `.agent/workflows/` ディレクトリ配下のルールやワークフローを編集・作成する際、必ずドラフトを経由する手順。 (`.agent/workflows/023.md`)
+  - 🏷️ **Tags**: `draft`, `editing`, `workflow-management`, `safety`, `rule-update`
+- **[Workflow-024] 意図の補完と具体化**: ユーザーの断片的な指示（0->1）から完全な手順（1->10）を構築・確認するフロー。 (`.agent/workflows/024.md`)
+  - 🏷️ **Tags**: `autonomy`, `instruction`, `complementation`, `step-by-step`, `proactive`
+- **[Workflow-025] 編集反映失敗時の強制リカバリ**: 変更が見当たらない場合に、ユーザー指示で全文上書きを行う手順。 (`.agent/workflows/025.md`)
+  - 🏷️ **Tags**: `recovery`, `force-update`, `overwrite`, `error-handling`, `manual`
+- **[Workflow-026] データと設定の分離 (Data/Config Split)**: 設定（Config）とユーザーデータ（Data）の保存先と管理戦略を明確に分離するアーキテクチャルール。 (`.agent/workflows/026.md`)
+  - 🏷️ **Tags**: `architecture`, `data-separation`, `storage`, `performance`, `json`
+- **[Workflow-027] ディスクリミネーテッド・ユニオンの分岐処理 (Objective Switch)**: タグ付き共用体の分岐に、網羅性チェックを保証する専用ユーティリティを使用する手順。 (`.agent/workflows/027.md`)
+  - 🏷️ **Tags**: `switch`, `union`, `types`, `utility`, `exhaustive`
+- **[Workflow-028] Workflows・ルールの最適化手順**: 運用中に発見したルールの不備や改善点を統合する手順。 (`.agent/workflows/028.md`)
+  - 🏷️ **Tags**: `optimization`, `rule-update`, `improvement`, `feedback`, `integration`
+- **[Workflow-029] Table 廃止・Grid 推奨**: テーブルタグを廃止し、Subgrid を活用した CSS Grid レイアウトを使用する (.agent/workflows/029.md)
+  - 🏷️ **Tags**: `css-grid`, `table`, `layout`, `subgrid`, `modern-css`
+- **[Workflow-030] UI コンポーネントの使用ルール (No Direct UI Imports)**: UI ライブラリを直接インポートせず、プロジェクト固有のラッパー（components/atoms 等）を使用するルール。 (`.agent/workflows/030.md`)
+  - 🏷️ **Tags**: `ui-components`, `import`, `atomic-design`, `shadcn`, `wrapper`
+- **[Workflow-031] 厳格なコードレビューと修正計画策定**: 大規模変更や指摘時に、文書化・監査・修正計画の 3 フェーズで確実に品質を担保する手順。 (`.agent/workflows/031.md`)
+  - 🏷️ **Tags**: `review`, `audit`, `quality-control`, `correction`, `plan`
+- **[Workflow-032] 否定・停止指示の意図確認プロセス**: ユーザーの `n` やリバートを安易に「拒否」と取らず、真意（停止、時期尚早、内容不備）を確認する手順。 (`.agent/workflows/032.md`)
+  - 🏷️ **Tags**: `confirmation`, `intent`, `rejection`, `stopping`, `communication`
 - **[Workflow-033] 思考シミュレーションによるドキュメント検証**: 仕様書を見ずにユースケースを発想し、実装・ドキュメントとのギャップを分析して網羅性を高める手順。 (`.agent/workflows/033.md`)
+  - 🏷️ **Tags**: `simulation`, `validation`, `use-case`, `gap-analysis`, `testing`
 - **[Workflow-035] 大規模置換におけるスクリプト言語の選択**: パスエイリアス追加などの大規模置換作業時に、PowerShell ではなく Node.js スクリプトを使用する手順。 (`.agent/workflows/035.md`)
+  - 🏷️ **Tags**: `script`, `node`, `replacement`, `refactoring`, `automation`
 - **[Workflow-037] リスト項目のクリック領域確保とボタンネスト回避**: デッドゾーンを排除しつつ HTML 構造を正当に保つ設計パターン。 (`.agent/workflows/037.md`)
   - 🏷️ **Tags**: `ux`, `clickable-area`, `hydration-error`, `nesting-forbidden`, `pattern`
 - **[Workflow-038] ユーザーデータ・設定ファイルの保存場所明示**: ユーザーのデータコントロール権を保障するため、README 等に設定ファイルの場所を明記するルール。 (`.agent/workflows/038.md`)
   - 🏷️ **Tags**: `user-data`, `config`, `readme`, `documentation`, `transparency`
 - **[Workflow-039] 現在の変更差分(Diff)を分析し、リファクタリング計画を策定するワークフロー**: 作業再開時や手動変更時に、現状を分析して計画に同期させる手順。 (`.agent/workflows/039.md`)
   - 🏷️ **Tags**: `git-diff`, `sync`, `planning`, `manual-change`, `refactor-analysis`
+- **[Workflow-040] 純粋データ Props による合成可能 UI パターン (Pure Data Props vs Component Injection)**: 完成品のコンポーネントではなく純粋なデータを Props として渡し、内部で合成することで責務分離を徹底する手順。 (`.agent/workflows/040.md`)
+  - 🏷️ **Tags**: `props`, `composition`, `ui-design`, `clean-code`, `inversion-of-control`
 
 ## 安全な承認プロセス (Safe Approval Process)
 
-- **承認の原子性 (Atomic Approval)**:
-  - ユーザーに承認を求める際は、**「承認対象の行動」と「その後の行動（Next Steps）」を混在させてはいけない**。
-  - **Bad**: 「A を修正しますか？ 完了次第 B を実行します。」(y と言われると B まで承認されたと AI が誤認し、B で失敗した際に責任の所在が曖昧になるため)
-  - **Good**: 「A を修正してよろしいでしょうか？」 -> (承認) -> (実行) -> 「完了しました。続いて B を実行してよろしいでしょうか？」
-  - 常に **1 つの承認依頼につき、1 つの主要なアクション** に留めてください。
+- **Good**: 「A を修正してよろしいでしょうか？」 -> (承認) -> (実行) -> 「完了しました。続いて B を実行してよろしいでしょうか？」
+- 常に **1 つの承認依頼につき、1 つの主要なアクション** に留めてください。
 
 ## AI の自律的行動指針（補足）
 
