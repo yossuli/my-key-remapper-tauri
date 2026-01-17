@@ -4,7 +4,8 @@
   "files": {
     "includes": [
       "!!src/renderer/src/components/ui",
-      "!!electron.vite.config.*.mjs"
+      "!!electron.vite.config.*.mjs",
+      "!!electron.vite.config.ts"
     ]
   },
   "linter": {
