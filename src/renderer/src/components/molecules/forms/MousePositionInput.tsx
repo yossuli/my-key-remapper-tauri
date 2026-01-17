@@ -4,30 +4,37 @@ import { Center, VStack } from "@/components/template/Flex";
 import { useScreenSize } from "@/hooks/ui/useScreenSize";
 import { ActionNumericInput } from "./ActionNumericInput";
 
-interface MouseState {
-  x: number | undefined;
-  y: number | undefined;
-  isCapturing: boolean;
-  countdown: number;
-}
-
-interface MouseHandlers {
-  setMouseX: (x: number | undefined) => void;
-  setMouseY: (y: number | undefined) => void;
-  onGetMousePosition: () => void;
-}
-
 interface MousePositionInputProps {
-  mouseState: MouseState;
-  mouseHandlers: MouseHandlers;
+  /** 現在のマウス X 座標 */
+  x: number | undefined;
+  /** 現在のマウス Y 座標 */
+  y: number | undefined;
+  /** キャプチャ実行中かどうか */
+  isCapturing: boolean;
+  /** キャプチャまでのカウントダウン秒数 */
+  countdown: number;
+  /** X座標が変更された時のハンドラ */
+  setMouseX: (x: number | undefined) => void;
+  /** Y座標が変更された時のハンドラ */
+  setMouseY: (y: number | undefined) => void;
+  /** 座標取得ボタンがクリックされた時のハンドラ */
+  onGetMousePosition: () => void;
+  /** フォーカス状態変更ハンドラ */
   setIsInputFocused: (focused: boolean) => void;
+  /** ID接頭辞 */
   idPrefix?: string;
+  /** 追加の操作UIなど */
   children?: ReactNode;
 }
 
 export function MousePositionInput({
-  mouseState: { x, y, isCapturing, countdown },
-  mouseHandlers: { onGetMousePosition, setMouseX, setMouseY },
+  x,
+  y,
+  isCapturing,
+  countdown,
+  onGetMousePosition,
+  setMouseX,
+  setMouseY,
   setIsInputFocused,
   idPrefix = "mouse",
   children,

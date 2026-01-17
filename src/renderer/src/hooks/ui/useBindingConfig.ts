@@ -6,10 +6,9 @@ import {
   type BindingState,
   convertBindingStateToAction,
   createInitialBindingState,
+  DEFAULT_REPEAT_DELAY_MS,
+  DEFAULT_REPEAT_INTERVAL_MS,
 } from "@/models/bindingStateModel";
-
-export const DEFAULT_REPEAT_DELAY_MS = 500;
-export const DEFAULT_REPEAT_INTERVAL_MS = 100;
 
 export interface RepeatConfig {
   enabled: boolean;

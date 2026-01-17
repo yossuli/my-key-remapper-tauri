@@ -161,12 +161,14 @@ export function convertBindingStateToAction(state: BindingState): Action {
   );
 }
 
-// Constants (moved from useBindingConfig)
-const DEFAULT_REPEAT_DELAY_MS = 500;
-const DEFAULT_REPEAT_INTERVAL_MS = 100;
-const DEFAULT_DELAY_MS = 500;
-const DEFAULT_CURSOR_RETURN_DELAY_MS = 1000;
-const DEFAULT_LAYER_ID = "base";
+// Constants (Source of Truth)
+export const DEFAULT_REPEAT_DELAY_MS = 500;
+export const DEFAULT_REPEAT_INTERVAL_MS = 100;
+export const DEFAULT_DELAY_MS = 500;
+export const DEFAULT_CURSOR_RETURN_DELAY_MS = 1000;
+export const DEFAULT_LAYER_ID = "base";
+export const DEFAULT_MOUSE_X = 0;
+export const DEFAULT_MOUSE_Y = 0;
 
 /**
  * アクションタイプ切り替え時の初期状態を生成

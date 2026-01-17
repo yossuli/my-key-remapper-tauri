@@ -11,13 +11,12 @@ import { KeyRemapList } from "@/components/molecules/forms/KeyRemapList";
 import { HStack, VStack } from "@/components/template/Flex";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import type { ActionSetters, RepeatConfig } from "@/hooks/ui/useBindingConfig";
 import {
-  type ActionSetters,
   DEFAULT_REPEAT_DELAY_MS,
   DEFAULT_REPEAT_INTERVAL_MS,
-  type RepeatConfig,
-} from "@/hooks/ui/useBindingConfig";
-import type { RemapBindingState } from "@/models/bindingStateModel";
+  type RemapBindingState,
+} from "@/models/bindingStateModel";
 import type { LayoutType } from "@/types";
 
 interface RemapKeySectionProps {
