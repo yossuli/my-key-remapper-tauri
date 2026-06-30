@@ -36,7 +36,10 @@ type MergeCallbackFns<
   V,
   W extends string,
 > = {
-  [K in W]: (s: U extends { [_ in T]: Split<K> } ? U : never, k: Split<K>) => V;
+  [K in W]: (
+    s: U extends { [_ in T]: Split<K> } ? U : never,
+    k: Split<K>
+  ) => V;
 };
 
 export const objectiveMergeSwitch = <
@@ -50,8 +53,13 @@ export const objectiveMergeSwitch = <
   value: U,
   key: T,
   interaction: Record<Split<W>, W>
-  // biome-ignore lint/suspicious/noExplicitAny: 型の怪しい部分をutilに押し込む
-): V => callbackFns[interaction[value[key]]](value as any, value[key]);
+): V =>
+  callbackFns[interaction[value[key]]](
+    // biome-ignore lint/suspicious/noExplicitAny: 型の怪しい部分をutilに押し込む
+    value as any,
+    // biome-ignore lint/suspicious/noExplicitAny: 型の怪しい部分をutilに押し込む
+    interaction[value[key]] as any
+  );
 
 export const objectiveDiscriminantSwitch = <
   // biome-ignore lint/suspicious/noExplicitAny: 汎用的な関数であるため

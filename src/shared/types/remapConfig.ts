@@ -153,6 +153,8 @@ export interface Layer {
   defaultModifiers?: ModifierOutput;
   /** レイヤーアクティブ時に押しっぱなしにする追加キー（任意のキーコード） */
   activeKeys?: number[];
+  /** 下位レイヤーの defaultModifiers と activeKeys を継承して合成するかどうか（デフォルト true） */
+  inheritModifiers?: boolean;
 }
 
 // =====================================

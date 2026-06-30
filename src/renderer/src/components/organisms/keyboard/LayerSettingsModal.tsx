@@ -9,6 +9,8 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import type { LayoutType } from "@/types";
 
 interface LayerSettingsModalProps {
@@ -36,6 +38,8 @@ export function LayerSettingsModal({
     win: false,
   });
 
+  const [inheritModifiers, setInheritModifiers] = useState(true);
+
   // 初期化
   useEffect(() => {
     if (layer) {
@@ -45,6 +49,7 @@ export function LayerSettingsModal({
         alt: !!layer.defaultModifiers?.alt,
         win: !!layer.defaultModifiers?.win,
       });
+      setInheritModifiers(layer.inheritModifiers ?? true);
     }
   }, [layer]);
 
@@ -62,6 +67,12 @@ export function LayerSettingsModal({
         [key]: newVal,
       },
     });
+  };
+
+  const toggleInheritModifiers = () => {
+    const newVal = !inheritModifiers;
+    setInheritModifiers(newVal);
+    onUpdate(layerId, { inheritModifiers: newVal });
   };
 
   const handleUpdateActiveKeys = (newKeys: number[]) => {
@@ -83,22 +94,42 @@ export function LayerSettingsModal({
             <h3 className="font-semibold text-sm">Default Modifiers</h3>
             <div className="flex gap-4">
               {Object.keys(modifiers).map((mod) => (
-                <label
-                  className="flex cursor-pointer select-none items-center gap-2"
-                  key={mod}
-                >
-                  <input
+                <div className="flex items-center gap-2" key={mod}>
+                  <Checkbox
                     checked={modifiers[mod as keyof typeof modifiers]}
-                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-                    onChange={() =>
+                    id={`mod-${mod}`}
+                    onCheckedChange={() =>
                       toggleModifier(mod as keyof typeof modifiers)
                     }
-                    type="checkbox"
                   />
-                  <span className="text-sm capitalize">{mod}</span>
-                </label>
+                  <Label
+                    className="cursor-pointer capitalize"
+                    htmlFor={`mod-${mod}`}
+                  >
+                    {mod}
+                  </Label>
+                </div>
               ))}
             </div>
+          </VStack>
+
+          {/* Layer Inheritance Section */}
+          <VStack gap={2}>
+            <h3 className="font-semibold text-sm">Layer Inheritance</h3>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                checked={inheritModifiers}
+                id="inherit-modifiers"
+                onCheckedChange={toggleInheritModifiers}
+              />
+              <Label className="cursor-pointer" htmlFor="inherit-modifiers">
+                下のレイヤーの設定を引き継ぐ (Inherit from lower layers)
+              </Label>
+            </div>
+            <p className="text-muted-foreground text-xs">
+              OFF
+              にすると、このレイヤーより下位のレイヤーの修飾キーと追加キーが無視されます
+            </p>
           </VStack>
 
           {/* Active Keys Section */}

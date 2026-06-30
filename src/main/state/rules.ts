@@ -4,11 +4,13 @@ import type {
   KeyBinding,
   Layer,
   MacroDef,
+  ModifierOutput,
   RemapConfig,
   TriggerType,
 } from "@shared/types/remapConfig";
 import { validateMacros } from "@shared/utils/macroUtils";
 import { configStorage } from "../storage/configStorage";
+import { buildModifierKeys } from "../utils/modifierKeys";
 import { layerState } from "./layerState";
 
 /**
@@ -220,12 +222,56 @@ export class RemapRules {
   }
 
   /**
-   * 現在アクティブなレイヤーを取得
+   * 現在アクティブな全レイヤーから、有効な修飾キーと追加キーを集約して取得
+   * inheritModifiers: false のレイヤーに遭遇した時点で下位への継承を遮断する
    */
-  getCurrentLayer(): Layer | undefined {
+  getAllActiveModifiers(): number[] {
     const stack = layerState.getStack();
     const layers = this.getLayers();
-    return layers.find((l) => l.id === stack.at(-1));
+
+    const modifiers: ModifierOutput = {};
+    const additionalKeys = new Set<number>();
+
+    // スタックを上位（最新）から下位（ベース）へ走査
+    for (let i = stack.length - 1; i >= 0; i--) {
+      const layer = layers.find((l) => l.id === stack[i]);
+      if (!layer) {
+        continue;
+      }
+
+      // 上位で未設定の修飾キーのみをマージ
+      this.mergeModifiers(modifiers, layer.defaultModifiers);
+
+      // 追加キーを集約
+      layer.activeKeys?.forEach((key) => additionalKeys.add(key));
+
+      // 継承遮断フラグで走査を打ち切り
+      if (layer.inheritModifiers === false) {
+        break;
+      }
+    }
+
+    // 修飾キーを VK コードに変換し、追加キーと合算
+    const modifierVks = buildModifierKeys(modifiers);
+    return [...modifierVks, ...additionalKeys];
+  }
+
+  /**
+   * 上位レイヤー優先で修飾キーをマージ（既存の値は上書きしない）
+   */
+  private mergeModifiers(
+    target: ModifierOutput,
+    source?: ModifierOutput
+  ): void {
+    if (!source) {
+      return;
+    }
+
+    (Object.keys(source) as Array<keyof ModifierOutput>).forEach((key) => {
+      if (source[key] && target[key] === undefined) {
+        target[key] = source[key];
+      }
+    });
   }
 
   /**
