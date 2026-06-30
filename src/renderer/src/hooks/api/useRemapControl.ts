@@ -35,6 +35,7 @@ export function useRemapControl(): UseRemapControlReturn {
   const setRemapEnabled = useCallback<UseRemapControlReturn["setRemapEnabled"]>(
     (enabled) => {
       send("set-remap-enabled", { enabled });
+      setIsActiveState(enabled);
     },
     [send]
   );
@@ -52,14 +53,14 @@ export function useRemapControl(): UseRemapControlReturn {
   const toggleActive = useCallback<
     UseRemapControlReturn["toggleActive"]
   >(() => {
-    setIsActiveState((prev) => !prev);
-  }, []);
+    setRemapEnabled(!isActive);
+  }, [isActive, setRemapEnabled]);
 
   const setIsActive = useCallback<UseRemapControlReturn["setIsActive"]>(
     (active) => {
-      setIsActiveState(active);
+      setRemapEnabled(active);
     },
-    []
+    [setRemapEnabled]
   );
 
   return {
