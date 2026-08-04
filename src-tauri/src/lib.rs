@@ -12,7 +12,7 @@ fn greet(name: &str) -> String {
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::RwLock;
-use tauri::State;
+use tauri::{Manager, State};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -31,13 +31,18 @@ pub struct Layer {
     pub default_modifiers: Option<Value>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Config {
+    #[serde(default)]
     pub version: u32,
+    #[serde(default)]
     pub layers: Vec<Layer>,
+    #[serde(default)]
     pub macros: Vec<Value>,
+    #[serde(default)]
     pub layer_order: Vec<String>,
+    #[serde(default)]
     pub global_settings: Value,
 }
 
@@ -50,11 +55,29 @@ fn get_mappings(state: State<'_, ConfigState>) -> Config {
     state.config.read().unwrap().clone()
 }
 
+fn get_config_path() -> std::path::PathBuf {
+    let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
+    std::path::PathBuf::from(app_data).join("my-key-remapper").join("key-mapping-config-v2.json")
+}
+
+fn save_config_to_disk(config: &Config) {
+    let config_path = get_config_path();
+    if let Some(parent) = config_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(json) = serde_json::to_string_pretty(config) {
+        let _ = std::fs::write(&config_path, json);
+        println!("Saved config to {:?}", config_path);
+    }
+}
+
 #[tauri::command(rename = "update-global-settings")]
 fn update_global_settings(settings: Value, state: State<'_, ConfigState>) {
     println!("Update global settings: {:?}", settings);
+    let mut config = state.config.write().unwrap();
     if let Some(settings_obj) = settings.get("settings") {
-        state.config.write().unwrap().global_settings = settings_obj.clone();
+        config.global_settings = settings_obj.clone();
+        save_config_to_disk(&config);
     }
 }
 
@@ -107,6 +130,7 @@ fn save_key_config(layer_id: String, from: u32, binding: Binding, state: State<'
         let from_str = from.to_string();
         let bindings_arr = layer.bindings.entry(from_str).or_insert_with(Vec::new);
         bindings_arr.push(binding);
+        save_config_to_disk(&config);
     }
 }
 
@@ -140,6 +164,7 @@ fn remove_binding(layer_id: String, from: u32, trigger: String, state: State<'_,
         let from_str = from.to_string();
         if let Some(bindings_arr) = layer.bindings.get_mut(&from_str) {
             bindings_arr.retain(|b| b.trigger != trigger);
+            save_config_to_disk(&config);
         }
     }
 }
@@ -151,38 +176,61 @@ fn update_layer(layer_id: String, updates: Value) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let initial_config: Config = serde_json::from_value(serde_json::json!({
-        "version": 1,
-        "layers": [
-            {
-                "id": "base",
-                "bindings": {
-                    "160": [{"trigger": "hold", "action": {"type": "layerMomentary", "layerId": "shift"}}],
-                    "161": [{"trigger": "hold", "action": {"type": "layerMomentary", "layerId": "shift"}}]
-                }
-            },
-            {
-                "id": "shift",
-                "bindings": {},
-                "defaultModifiers": {"shift": true}
-            }
-        ],
-        "macros": [],
-        "layerOrder": ["base", "shift"],
-        "globalSettings": {
-            "defaultHoldThresholdMs": 200,
-            "defaultTapIntervalMs": 300
-        }
-    })).expect("Failed to parse initial config");
-
     tauri::Builder::default()
-        .manage(ConfigState { config: RwLock::new(initial_config) })
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
                 .build()
         )
         .setup(|app| {
+            let mut loaded_config = None;
+            let config_path = get_config_path();
+            if let Ok(json) = std::fs::read_to_string(&config_path) {
+                match serde_json::from_str::<Config>(&json) {
+                    Ok(parsed) => {
+                        loaded_config = Some(parsed);
+                        println!("Loaded config from disk: {:?}", config_path);
+                    },
+                    Err(e) => {
+                        println!("Failed to parse existing config ({:?}): {}", config_path, e);
+                    }
+                }
+            }
+
+            let config_to_use = loaded_config.unwrap_or_else(|| {
+                println!("Using default config");
+                let config: Config = serde_json::from_value(serde_json::json!({
+                    "version": 1,
+                    "layers": [
+                        {
+                            "id": "base",
+                            "bindings": {
+                                "160": [{"trigger": "hold", "action": {"type": "layerMomentary", "layerId": "shift"}}],
+                                "161": [{"trigger": "hold", "action": {"type": "layerMomentary", "layerId": "shift"}}]
+                            }
+                        },
+                        {
+                            "id": "shift",
+                            "bindings": {},
+                            "defaultModifiers": {"shift": true}
+                        }
+                    ],
+                    "macros": [],
+                    "layerOrder": ["base", "shift"],
+                    "globalSettings": {
+                        "defaultHoldThresholdMs": 200,
+                        "defaultTapIntervalMs": 300
+                    }
+                })).expect("Failed to parse initial config");
+                
+                // Save it right away
+                save_config_to_disk(&config);
+                
+                config
+            });
+
+            app.manage(ConfigState { config: RwLock::new(config_to_use) });
+
             #[cfg(windows)]
             hook::setup_hook(app.handle().clone());
             

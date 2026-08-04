@@ -27,7 +27,7 @@ pub fn setup_hook(app: AppHandle) {
             None,
             0,
         ).unwrap();
-        
+
         HOOK_HANDLE.store(hook.0 as *mut _, Ordering::SeqCst);
     }
 }
@@ -45,13 +45,13 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
     if code >= 0 {
         let kb_struct = *(lparam.0 as *const KBDLLHOOKSTRUCT);
         let vk_code = kb_struct.vkCode;
-        
+
         // Window messages for keyboard
         const WM_KEYDOWN: u32 = 0x0100;
         const WM_KEYUP: u32 = 0x0101;
         const WM_SYSKEYDOWN: u32 = 0x0104;
         const WM_SYSKEYUP: u32 = 0x0105;
-        
+
         let is_down = wparam.0 as u32 == WM_KEYDOWN || wparam.0 as u32 == WM_SYSKEYDOWN;
         let is_up = wparam.0 as u32 == WM_KEYUP || wparam.0 as u32 == WM_SYSKEYUP;
 
@@ -70,7 +70,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
                 });
 
                 let remap_enabled = REMAP_ENABLED.load(Ordering::SeqCst);
-                
+
                 if remap_enabled {
                     println!("[Rust Hook] Key Intercepted - VK: {}, Down: {}", vk_code, is_down);
                 } else {
@@ -81,7 +81,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
                 // リマップ判定
                 let state = app.state::<ConfigState>();
                 let config = state.config.read().unwrap();
-                
+
                 // TODO: Layer stack management (currently just uses base layer)
                 if let Some(base_layer) = config.layers.iter().find(|l| l.id == "base") {
                     if let Some(key_bindings) = base_layer.bindings.get(&vk_code.to_string()) {
@@ -94,7 +94,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
                                         let target_vk = keys[0].as_u64().unwrap_or(0) as u16;
                                         if target_vk > 0 {
                                             // SendInputの実行
-                                            let mut input = INPUT {
+                                            let input = INPUT {
                                                 r#type: INPUT_KEYBOARD,
                                                 Anonymous: INPUT_0 {
                                                     ki: KEYBDINPUT {
@@ -107,7 +107,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
                                                 },
                                             };
                                             SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
-                                            
+
                                             // 元の入力をブロック
                                             return windows::Win32::Foundation::LRESULT(1);
                                         }
@@ -120,7 +120,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
             }
         }
     }
-    
+
     let handle = HOOK_HANDLE.load(Ordering::SeqCst);
     CallNextHookEx(HHOOK(handle as *mut _), code, wparam, lparam)
 }
