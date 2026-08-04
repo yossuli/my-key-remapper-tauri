@@ -3,6 +3,7 @@ import {
   type GlobalSettings,
 } from "@shared/types/remapConfig";
 import { useCallback, useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 /**
  * グローバル設定を管理するカスタムフック
@@ -26,10 +27,10 @@ export function useGlobalSettings(): UseGlobalSettingsReturn {
   useEffect(() => {
     const loadSettings = async (): Promise<void> => {
       try {
-        const data = await window.electron?.ipcRenderer.invoke("get-mappings");
+        const data = await invoke<any>("get-mappings");
         // globalSettingsが存在しない場合はデフォルト値を使用（後方互換性）
         setGlobalSettings(
-          data.globalSettings ?? DEFAULT_REMAP_CONFIG.globalSettings
+          data?.globalSettings ?? DEFAULT_REMAP_CONFIG.globalSettings
         );
       } catch (error) {
         console.error("Failed to load global settings:", error);
@@ -47,7 +48,7 @@ export function useGlobalSettings(): UseGlobalSettingsReturn {
   const updateGlobalSettings = useCallback<
     UseGlobalSettingsReturn["updateGlobalSettings"]
   >((settings) => {
-    window.electron?.ipcRenderer.send("update-global-settings", { settings });
+    invoke("update-global-settings", { settings });
     // ローカルの状態も更新
     setGlobalSettings((prev) => (prev ? { ...prev, ...settings } : prev));
   }, []);

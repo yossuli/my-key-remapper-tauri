@@ -1,70 +1,69 @@
-// IPC通信をカプセル化するカスタムフック
-// window.electron?.ipcRendererへの直接アクセスを隠蔽
-
 import { useCallback, useEffect, useRef } from "react";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { listen, UnlistenFn, emit as tauriEmit } from "@tauri-apps/api/event";
 
-type IpcCallback = (...args: unknown[]) => void;
+type IpcCallback = (payload: any) => void;
 
 interface UseIpcReturn {
   // biome-ignore lint/suspicious/noExplicitAny: IPC引数は動的
-  send: (channel: string, ...args: any[]) => void;
+  send: (channel: string, payload?: any) => Promise<void>;
   invoke: <T = unknown>(
     channel: string,
     // biome-ignore lint/suspicious/noExplicitAny: IPC引数は動的
-    ...args: any[]
+    args?: Record<string, any>
   ) => Promise<T | undefined>;
-  on: (channel: string, callback: IpcCallback) => void;
-  off: (channel: string, callback: IpcCallback) => void;
+  on: (channel: string, callback: IpcCallback) => Promise<UnlistenFn>;
   isAvailable: boolean;
 }
 
 /**
  * IPC通信用のカスタムフック
- * Electronの有無に関わらず安全に使用可能
+ * Tauri環境で使用
  */
 export function useIpc(): UseIpcReturn {
-  const ipc = window.electron?.ipcRenderer;
+  const isAvailable = true; // Tauri is generally available
 
   const send = useCallback(
     // biome-ignore lint/suspicious/noExplicitAny: IPC引数は動的
-    (channel: string, ...args: any[]) => {
-      ipc?.send(channel, ...args);
+    async (channel: string, payload?: any) => {
+      // In Tauri, we can emit events to the backend, or just invoke a command.
+      // If we are calling a rust command that does not return, we can use invoke.
+      // Let's map send to invoke if we assume it's a backend command, 
+      // or emit if it's an event. For compatibility we'll use invoke.
+      if (payload) {
+        await tauriInvoke(channel, payload);
+      } else {
+        await tauriInvoke(channel);
+      }
     },
-    [ipc]
+    []
   );
 
   const invoke = useCallback(
     async <T = unknown>(
       channel: string,
       // biome-ignore lint/suspicious/noExplicitAny: IPC引数は動的
-      ...args: any[]
-    ): Promise<T | undefined> => ipc?.invoke(channel, ...args),
-    [ipc]
+      args?: Record<string, any>
+    ): Promise<T | undefined> => {
+      return await tauriInvoke<T>(channel, args);
+    },
+    []
   );
 
   const on = useCallback(
-    (channel: string, callback: IpcCallback) => {
-      ipc?.on(channel, callback);
+    async (channel: string, callback: IpcCallback) => {
+      return await listen(channel, (event) => {
+        callback(event.payload);
+      });
     },
-    [ipc]
+    []
   );
 
-  const off = useCallback(
-    (channel: string, callback: IpcCallback) => {
-      ipc?.off(channel, callback);
-    },
-    [ipc]
-  );
-
-  return { send, invoke, on, off, isAvailable: !!ipc };
+  return { send, invoke, on, isAvailable };
 }
 
-/**
- * IPCイベントのサブスクリプション用フック
- * マウント時に自動でon/offを管理
- */
 export function useIpcEvent(channel: string, callback: IpcCallback): void {
-  const { on, off } = useIpc();
+  const { on } = useIpc();
   const callbackRef = useRef(callback);
 
   // コールバックの参照を最新に保つ
@@ -73,13 +72,20 @@ export function useIpcEvent(channel: string, callback: IpcCallback): void {
   }, [callback]);
 
   useEffect(() => {
-    const handler: IpcCallback = (...args) => {
-      callbackRef.current(...args);
+    let unlisten: UnlistenFn | undefined;
+
+    const setup = async () => {
+      unlisten = await on(channel, (payload) => {
+        callbackRef.current(payload);
+      });
     };
 
-    on(channel, handler);
+    setup();
+
     return () => {
-      off(channel, handler);
+      if (unlisten) {
+        unlisten();
+      }
     };
-  }, [channel, on, off]);
+  }, [channel, on]);
 }

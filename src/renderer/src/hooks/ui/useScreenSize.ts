@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 interface ScreenSize {
   width: number;
@@ -14,18 +15,8 @@ export function useScreenSize(): ScreenSize | null {
   useEffect(() => {
     const getScreenSize = async (): Promise<void> => {
       try {
-        // Electron環境でのみ画面サイズを取得
-        if (window.electron?.ipcRenderer) {
-          const size =
-            await window.electron.ipcRenderer.invoke("get-screen-size");
-          setScreenSize(size);
-        } else {
-          // ブラウザ環境ではデフォルト値を使用(AIがブラウザでUIを確認するときに使用)
-          console.warn(
-            "Running in browser environment, using default screen size"
-          );
-          setScreenSize({ width: 1920, height: 1080 });
-        }
+        const size = await invoke<ScreenSize>("get-screen-size");
+        setScreenSize(size);
       } catch (error) {
         console.error("Failed to get screen size:", error);
         // エラー時もデフォルト値を設定
