@@ -31,7 +31,7 @@ export function useKeyEventLog(): UseKeyEventLogReturn {
         return; // 一時停止中はスキップ
       }
 
-      const data = args[1] as { vkCode: number };
+      const data = args[0] as { vkCode: number };
       setLogs((prev) => [
         {
           id: crypto.randomUUID(),

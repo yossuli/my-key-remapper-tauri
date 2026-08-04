@@ -73,16 +73,23 @@ export function useIpcEvent(channel: string, callback: IpcCallback): void {
 
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
+    let isMounted = true;
 
     const setup = async () => {
-      unlisten = await on(channel, (payload) => {
+      const fn = await on(channel, (payload) => {
         callbackRef.current(payload);
       });
+      if (isMounted) {
+        unlisten = fn;
+      } else {
+        fn();
+      }
     };
 
     setup();
 
     return () => {
+      isMounted = false;
       if (unlisten) {
         unlisten();
       }

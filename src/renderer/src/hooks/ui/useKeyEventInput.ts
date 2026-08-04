@@ -1,32 +1,18 @@
-// IPC経由でキーイベントを受け取るフック
-
-import { useCallback, useEffect, useRef } from "react";
-import { useIpcEvent } from "@/hooks/api/useIpc";
+// DOMのKeyboardEvent経由でキーイベントを受け取るフック（設定UIでの生キー取得用）
+import { useEffect, useRef } from "react";
+import { getVkCode } from "@/utils/keyboard";
 
 interface UseKeyEventInputOptions {
-  /** フックが有効かどうか */
-  enabled: boolean;
-  /** キーダウン時のコールバック */
   onKeyDown?: (vkCode: number) => void;
-  /** キーアップ時のコールバック */
   onKeyUp?: (vkCode: number) => void;
+  enabled?: boolean;
 }
 
-interface KeyEventData {
-  vkCode: number;
-  isUp: boolean;
-}
-
-/**
- * IPC経由でキーイベントを受け取るフック
- * mainプロセスから送られる正確なvkCodeを使用する
- */
 export function useKeyEventInput({
-  enabled,
   onKeyDown,
   onKeyUp,
-}: UseKeyEventInputOptions): void {
-  // コールバックの参照を保持（再レンダリング時のリスナー再登録を防ぐ）
+  enabled = true,
+}: UseKeyEventInputOptions) {
   const onKeyDownRef = useRef(onKeyDown);
   const onKeyUpRef = useRef(onKeyUp);
   const enabledRef = useRef(enabled);
@@ -35,25 +21,33 @@ export function useKeyEventInput({
     onKeyDownRef.current = onKeyDown;
     onKeyUpRef.current = onKeyUp;
     enabledRef.current = enabled;
-    return () => {
-      onKeyDownRef.current = undefined;
-      onKeyUpRef.current = undefined;
-      enabledRef.current = false;
-    };
   }, [onKeyDown, onKeyUp, enabled]);
 
-  const handleKeyEvent = useCallback((...args: unknown[]) => {
-    if (!enabledRef.current) {
-      return;
-    }
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!enabledRef.current) {
+        return;
+      }
+      e.preventDefault();
+      const vkCode = getVkCode(e);
+      onKeyDownRef.current?.(vkCode);
+    };
 
-    const data = args[1] as KeyEventData;
-    if (data.isUp) {
-      onKeyUpRef.current?.(data.vkCode);
-    } else {
-      onKeyDownRef.current?.(data.vkCode);
-    }
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (!enabledRef.current) {
+        return;
+      }
+      e.preventDefault();
+      const vkCode = getVkCode(e);
+      onKeyUpRef.current?.(vkCode);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
   }, []);
-
-  useIpcEvent("key-event", handleKeyEvent);
 }
