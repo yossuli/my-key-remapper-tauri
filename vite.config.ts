@@ -14,9 +14,9 @@ export default defineConfig({
   build: {
     outDir: "../../dist",
     emptyOutDir: true,
-    target: process.env.TAURI_PLATFORM == "windows" ? "chrome105" : "safari13",
-    minify: !process.env.TAURI_DEBUG ? "esbuild" : false,
-    sourcemap: !!process.env.TAURI_DEBUG,
+    target: process.env.TAURI_ENV_PLATFORM == "windows" ? "chrome105" : "safari13",
+    minify: !process.env.TAURI_ENV_DEBUG ? "esbuild" : false,
+    sourcemap: !!process.env.TAURI_ENV_DEBUG,
     rollupOptions: {
       input: {
         index: resolve(__dirname, "src/renderer/index.html"),

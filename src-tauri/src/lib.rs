@@ -3,11 +3,6 @@ use serde_json::Value;
 #[cfg(windows)]
 mod hook;
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -66,14 +61,16 @@ fn save_config_to_disk(config: &Config) {
         let _ = std::fs::create_dir_all(parent);
     }
     if let Ok(json) = serde_json::to_string_pretty(config) {
-        let _ = std::fs::write(&config_path, json);
-        println!("Saved config to {:?}", config_path);
+        match std::fs::write(&config_path, json) {
+            Ok(_) => log::info!("Saved config to {:?}", config_path),
+            Err(e) => log::error!("Failed to save config to {:?}: {}", config_path, e),
+        }
     }
 }
 
 #[tauri::command(rename = "update-global-settings")]
 fn update_global_settings(settings: Value, state: State<'_, ConfigState>) {
-    println!("Update global settings: {:?}", settings);
+    log::info!("Update global settings: {:?}", settings);
     let mut config = state.config.write().unwrap();
     if let Some(settings_obj) = settings.get("settings") {
         config.global_settings = settings_obj.clone();
@@ -98,7 +95,7 @@ fn get_macros() -> Value {
 
 #[tauri::command(rename = "release-all-keys")]
 fn release_all_keys() {
-    println!("Release all keys");
+    log::info!("Release all keys");
 }
 
 #[tauri::command(rename = "get-screen-size")]
@@ -119,12 +116,12 @@ fn get_cursor_position() -> Value {
 
 #[tauri::command(rename = "set-debug-log-enabled")]
 fn set_debug_log_enabled(enabled: bool) {
-    println!("Set debug log enabled: {}", enabled);
+    log::info!("Set debug log enabled: {}", enabled);
 }
 
 #[tauri::command(rename = "save-key-config")]
 fn save_key_config(layer_id: String, from: u32, binding: Binding, state: State<'_, ConfigState>) {
-    println!("save_key_config: layer_id={}, from={}, binding={:?}", layer_id, from, binding);
+    log::info!("save_key_config: layer_id={}, from={}, binding={:?}", layer_id, from, binding);
     let mut config = state.config.write().unwrap();
     if let Some(layer) = config.layers.iter_mut().find(|l| l.id == layer_id) {
         let from_str = from.to_string();
@@ -136,29 +133,29 @@ fn save_key_config(layer_id: String, from: u32, binding: Binding, state: State<'
 
 #[tauri::command(rename = "set-remap-enabled")]
 fn set_remap_enabled(enabled: bool) {
-    println!("set_remap_enabled: {}", enabled);
+    log::info!("set_remap_enabled: {}", enabled);
     #[cfg(windows)]
     hook::REMAP_ENABLED.store(enabled, std::sync::atomic::Ordering::SeqCst);
 }
 
 #[tauri::command(rename = "add-layer")]
 fn add_layer(layer_id: String) {
-    println!("add_layer: {}", layer_id);
+    log::info!("add_layer: {}", layer_id);
 }
 
 #[tauri::command(rename = "remove-layer")]
 fn remove_layer(layer_id: String) {
-    println!("remove_layer: {}", layer_id);
+    log::info!("remove_layer: {}", layer_id);
 }
 
 #[tauri::command(rename = "reorder-layers")]
 fn reorder_layers(new_order: Vec<String>) {
-    println!("reorder_layers: {:?}", new_order);
+    log::info!("reorder_layers: {:?}", new_order);
 }
 
 #[tauri::command(rename = "remove-binding")]
 fn remove_binding(layer_id: String, from: u32, trigger: String, state: State<'_, ConfigState>) {
-    println!("remove_binding: layer={}, from={}, trigger={}", layer_id, from, trigger);
+    log::info!("remove_binding: layer={}, from={}, trigger={}", layer_id, from, trigger);
     let mut config = state.config.write().unwrap();
     if let Some(layer) = config.layers.iter_mut().find(|l| l.id == layer_id) {
         let from_str = from.to_string();
@@ -171,7 +168,7 @@ fn remove_binding(layer_id: String, from: u32, trigger: String, state: State<'_,
 
 #[tauri::command(rename = "update-layer")]
 fn update_layer(layer_id: String, updates: Value) {
-    println!("update_layer: layer={}, updates={:?}", layer_id, updates);
+    log::info!("update_layer: layer={}, updates={:?}", layer_id, updates);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -189,16 +186,16 @@ pub fn run() {
                 match serde_json::from_str::<Config>(&json) {
                     Ok(parsed) => {
                         loaded_config = Some(parsed);
-                        println!("Loaded config from disk: {:?}", config_path);
+                        log::info!("Loaded config from disk: {:?}", config_path);
                     },
                     Err(e) => {
-                        println!("Failed to parse existing config ({:?}): {}", config_path, e);
+                        log::error!("Failed to parse existing config ({:?}): {}", config_path, e);
                     }
                 }
             }
 
             let config_to_use = loaded_config.unwrap_or_else(|| {
-                println!("Using default config");
+                log::info!("Using default config");
                 let config: Config = serde_json::from_value(serde_json::json!({
                     "version": 1,
                     "layers": [
@@ -237,7 +234,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            greet,
             get_mappings,
             update_global_settings,
             get_screen_size,

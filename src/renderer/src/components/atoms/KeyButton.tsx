@@ -92,8 +92,10 @@ export function KeyButton({
         )}
         onClick={() => onClick(baseVk)}
         onKeyDown={(e) => {
-          // キーボード操作を無効化（Enter長押し後の誤発火防止）
-          e.preventDefault();
+          // キーボード操作での長押し連打による誤発火を防止
+          if (e.repeat) {
+            e.preventDefault();
+          }
         }}
         style={{
           width: `${(keyDef.width || 1) * KEY_SIZE_REM}rem`,

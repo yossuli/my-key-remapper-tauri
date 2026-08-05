@@ -20,7 +20,7 @@ export const getKeyLabel = (vk: number[], layoutType: LayoutType): string => {
       const found = row.find((k) => {
         const a = new Set([k.vk].flat());
         const b = new Set([vk].flat());
-        if (a.difference(b).size === 0 && b.difference(a).size === 0) {
+        if ([...a].every(x => b.has(x)) && [...b].every(x => a.has(x))) {
           return true;
         }
         return false;
