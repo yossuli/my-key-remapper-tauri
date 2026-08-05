@@ -133,6 +133,7 @@ fn save_key_config(layer_id: String, from: u32, binding: Binding, state: State<'
     if let Some(layer) = config.layers.iter_mut().find(|l| l.id == layer_id) {
         let from_str = from.to_string();
         let bindings_arr = layer.bindings.entry(from_str).or_insert_with(Vec::new);
+        bindings_arr.retain(|b| b.trigger != binding.trigger);
         bindings_arr.push(binding);
         save_config_to_disk(&config);
         state.config.store(Arc::new(config));

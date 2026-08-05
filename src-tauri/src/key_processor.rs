@@ -62,7 +62,7 @@ impl KeyProcessor {
                 return None;
             }
         }
-        
+
         // tap設定が省略されている場合、デフォルト動作として元のキーをそのまま送信する
         if trigger == "tap" {
             Some(vk)
