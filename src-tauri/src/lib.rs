@@ -4,6 +4,7 @@ use serde_json::Value;
 mod hook;
 #[cfg(windows)]
 pub mod key_processor;
+pub mod state_machine;
 
 
 use serde::{Deserialize, Serialize};

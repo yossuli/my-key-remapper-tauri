@@ -16,7 +16,8 @@ static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 pub static REMAP_ENABLED: AtomicBool = AtomicBool::new(false);
 
 pub fn setup_hook(app: AppHandle) {
-    let _ = APP_HANDLE.set(app);
+    let _ = APP_HANDLE.set(app.clone());
+    KeyProcessor::start_timeout_worker(app);
     unsafe {
         let hook = SetWindowsHookExW(
             WH_KEYBOARD_LL,
