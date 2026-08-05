@@ -111,6 +111,8 @@ export function useBindingConfig({
           holdThresholdMs: holdTiming,
           tapIntervalMs: doubleTapTiming,
         });
+      } catch (err) {
+        console.error("Failed to load binding config:", err);
       } finally {
         setIsLoading(false);
       }

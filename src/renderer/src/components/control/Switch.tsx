@@ -57,14 +57,16 @@ export const Default = <T extends React.ElementType = typeof React.Fragment>({
   return <Tag {...props}>{children}</Tag>;
 };
 
-export const Switch = ({ children }: { children: JSX.Element[] }) => {
-  const match = children.find(
+export const Switch = ({ children }: { children: React.ReactNode }) => {
+  const childArray = React.Children.toArray(children) as React.ReactElement[];
+  
+  const match = childArray.find(
     (child) =>
       (child.type === Case || child.type === DefineCase) &&
       Boolean(child.props.when)
   );
 
-  const defaultCase = findWithComponentType(children, Default);
+  const defaultCase = findWithComponentType(childArray, Default);
 
   return <>{match || defaultCase}</>;
 };

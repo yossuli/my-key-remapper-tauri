@@ -6,7 +6,8 @@ mod hook;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::RwLock;
+use arc_swap::ArcSwap;
+use std::sync::Arc;
 use tauri::{Manager, State};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -42,12 +43,12 @@ pub struct Config {
 }
 
 pub struct ConfigState {
-    pub config: RwLock<Config>,
+    pub config: ArcSwap<Config>,
 }
 
 #[tauri::command(rename = "get-mappings")]
 fn get_mappings(state: State<'_, ConfigState>) -> Config {
-    state.config.read().unwrap().clone()
+    (**state.config.load()).clone()
 }
 
 fn get_config_path() -> std::path::PathBuf {
@@ -71,10 +72,11 @@ fn save_config_to_disk(config: &Config) {
 #[tauri::command(rename = "update-global-settings")]
 fn update_global_settings(settings: Value, state: State<'_, ConfigState>) {
     log::info!("Update global settings: {:?}", settings);
-    let mut config = state.config.write().unwrap();
+    let mut config = (**state.config.load()).clone();
     if let Some(settings_obj) = settings.get("settings") {
         config.global_settings = settings_obj.clone();
         save_config_to_disk(&config);
+        state.config.store(Arc::new(config));
     }
 }
 
@@ -122,12 +124,13 @@ fn set_debug_log_enabled(enabled: bool) {
 #[tauri::command(rename = "save-key-config")]
 fn save_key_config(layer_id: String, from: u32, binding: Binding, state: State<'_, ConfigState>) {
     log::info!("save_key_config: layer_id={}, from={}, binding={:?}", layer_id, from, binding);
-    let mut config = state.config.write().unwrap();
+    let mut config = (**state.config.load()).clone();
     if let Some(layer) = config.layers.iter_mut().find(|l| l.id == layer_id) {
         let from_str = from.to_string();
         let bindings_arr = layer.bindings.entry(from_str).or_insert_with(Vec::new);
         bindings_arr.push(binding);
         save_config_to_disk(&config);
+        state.config.store(Arc::new(config));
     }
 }
 
@@ -156,12 +159,13 @@ fn reorder_layers(new_order: Vec<String>) {
 #[tauri::command(rename = "remove-binding")]
 fn remove_binding(layer_id: String, from: u32, trigger: String, state: State<'_, ConfigState>) {
     log::info!("remove_binding: layer={}, from={}, trigger={}", layer_id, from, trigger);
-    let mut config = state.config.write().unwrap();
+    let mut config = (**state.config.load()).clone();
     if let Some(layer) = config.layers.iter_mut().find(|l| l.id == layer_id) {
         let from_str = from.to_string();
         if let Some(bindings_arr) = layer.bindings.get_mut(&from_str) {
             bindings_arr.retain(|b| b.trigger != trigger);
             save_config_to_disk(&config);
+            state.config.store(Arc::new(config));
         }
     }
 }
@@ -226,7 +230,7 @@ pub fn run() {
                 config
             });
 
-            app.manage(ConfigState { config: RwLock::new(config_to_use) });
+            app.manage(ConfigState { config: ArcSwap::from(Arc::new(config_to_use)) });
 
             #[cfg(windows)]
             hook::setup_hook(app.handle().clone());
@@ -251,6 +255,14 @@ pub fn run() {
             remove_binding,
             update_layer
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|_app_handle, event| match event {
+        tauri::RunEvent::ExitRequested { .. } => {
+            #[cfg(windows)]
+            hook::teardown_hook();
+        }
+        _ => {}
+    });
 }

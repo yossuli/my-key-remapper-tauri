@@ -80,7 +80,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
 
                 // リマップ判定
                 let state = app.state::<ConfigState>();
-                let config = state.config.read().unwrap();
+                let config = state.config.load();
 
                 // TODO: Layer stack management (currently just uses base layer)
                 if let Some(base_layer) = config.layers.iter().find(|l| l.id == "base") {
