@@ -6,12 +6,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SetWindowsHookExW, UnhookWindowsHookEx, CallNextHookEx,
     WH_KEYBOARD_LL, HHOOK, KBDLLHOOKSTRUCT
 };
-use windows::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
-    KEYEVENTF_KEYUP
-};
 use tauri::Manager;
 use crate::ConfigState;
+use crate::key_processor::{KeyProcessor, HookAction};
 use std::sync::atomic::AtomicBool;
 
 static HOOK_HANDLE: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
@@ -70,10 +67,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
                 });
 
                 let remap_enabled = REMAP_ENABLED.load(Ordering::SeqCst);
-
-                if remap_enabled {
-                    println!("[Rust Hook] Key Intercepted - VK: {}, Down: {}", vk_code, is_down);
-                } else {
+                if !remap_enabled {
                     let handle = HOOK_HANDLE.load(Ordering::SeqCst);
                     return CallNextHookEx(HHOOK(handle as *mut _), code, wparam, lparam);
                 }
@@ -82,40 +76,9 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
                 let state = app.state::<ConfigState>();
                 let config = state.config.load();
 
-                // TODO: Layer stack management (currently just uses base layer)
-                if let Some(base_layer) = config.layers.iter().find(|l| l.id == "base") {
-                    if let Some(key_bindings) = base_layer.bindings.get(&vk_code.to_string()) {
-                        // Find tap trigger
-                        if let Some(binding) = key_bindings.iter().find(|b| b.trigger == "tap") {
-                            if binding.action.get("type").and_then(|v| v.as_str()) == Some("remap") {
-                                if let Some(keys) = binding.action.get("keys").and_then(|v| v.as_array()) {
-                                    if !keys.is_empty() {
-                                        // リマップ先のキーを取得 (単一キーのみ対応版)
-                                        let target_vk = keys[0].as_u64().unwrap_or(0) as u16;
-                                        if target_vk > 0 {
-                                            // SendInputの実行
-                                            let input = INPUT {
-                                                r#type: INPUT_KEYBOARD,
-                                                Anonymous: INPUT_0 {
-                                                    ki: KEYBDINPUT {
-                                                        wVk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY(target_vk),
-                                                        wScan: 0,
-                                                        dwFlags: if is_up { KEYEVENTF_KEYUP } else { windows::Win32::UI::Input::KeyboardAndMouse::KEYBD_EVENT_FLAGS(0) },
-                                                        time: 0,
-                                                        dwExtraInfo: 0,
-                                                    },
-                                                },
-                                            };
-                                            SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
-
-                                            // 元の入力をブロック
-                                            return windows::Win32::Foundation::LRESULT(1);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                match KeyProcessor::process_key(vk_code, is_down, &config) {
+                    HookAction::Block => return windows::Win32::Foundation::LRESULT(1),
+                    HookAction::PassThrough => {}
                 }
             }
         }
