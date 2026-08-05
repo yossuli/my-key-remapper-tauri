@@ -58,9 +58,17 @@ impl KeyProcessor {
                         }
                     }
                 }
+                // 明示的な設定があるがremap以外（または無効な設定）の場合はNoneを返す
+                return None;
             }
         }
-        None
+        
+        // tap設定が省略されている場合、デフォルト動作として元のキーをそのまま送信する
+        if trigger == "tap" {
+            Some(vk)
+        } else {
+            None
+        }
     }
 
     fn get_timing(vk: u16, trigger: &str, config: &Config) -> Option<u32> {
