@@ -77,7 +77,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
                 let state = app.state::<ConfigState>();
                 let config = state.config.load();
 
-                match KeyProcessor::process_key(vk_code, is_down, &config) {
+                match KeyProcessor::process_key(vk_code as u16, is_down, &config) {
                     HookAction::Block => return windows::Win32::Foundation::LRESULT(1),
                     HookAction::PassThrough => {}
                 }

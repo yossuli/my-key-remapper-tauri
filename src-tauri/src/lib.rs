@@ -18,6 +18,8 @@ use tauri::{Manager, State};
 pub struct Binding {
     pub trigger: String,
     pub action: Value,
+    #[serde(rename = "timingMs", skip_serializing_if = "Option::is_none")]
+    pub timing_ms: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -180,7 +182,7 @@ fn update_layer(layer_id: String, updates: Value) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut app = tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)

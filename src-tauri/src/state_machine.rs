@@ -82,6 +82,10 @@ pub fn transition(
         (KeyState::HoldActive, TriggerEvent::Released) => {
             (KeyState::Idle, ActionCommand::ReleaseHold)
         }
+        (KeyState::HoldActive, TriggerEvent::Pressed) => {
+            // OSのキーリピートによる再押下イベントをスルーせず、再度ダウンを送信してリピートを発生させる
+            (KeyState::HoldActive, ActionCommand::ExecuteHold)
+        }
 
         // === WAITING FOR DOUBLE TAP ===
         (KeyState::WaitingForDoubleTap { .. }, TriggerEvent::Timeout)
@@ -94,10 +98,14 @@ pub fn transition(
 
         // === TAP ACTIVE ===
         (KeyState::TapActive, TriggerEvent::Released) => (KeyState::Idle, ActionCommand::ReleaseTap),
+        (KeyState::TapActive, TriggerEvent::Pressed) => (KeyState::TapActive, ActionCommand::ExecuteTap),
 
         // === DOUBLE TAP ACTIVE ===
         (KeyState::DoubleTapActive, TriggerEvent::Released) => {
             (KeyState::Idle, ActionCommand::ReleaseDoubleTap)
+        }
+        (KeyState::DoubleTapActive, TriggerEvent::Pressed) => {
+            (KeyState::DoubleTapActive, ActionCommand::ExecuteDoubleTap)
         }
 
         // Ignore redundant or invalid events (e.g. OtherKeyPressed while HoldActive)
