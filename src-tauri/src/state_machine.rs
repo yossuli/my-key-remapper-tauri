@@ -28,6 +28,7 @@ pub enum ActionCommand {
     ReleaseTap,       // Tapを離す
     ExecuteTapAtomic, // Tapを押下してすぐ離す（一連の動作）
     ExecuteHold,      // Holdを押下
+    ExecuteHoldRepeat,// Holdを押下（リピート用）
     ReleaseHold,      // Holdを離す
     ExecuteDoubleTap, // DoubleTapを押下
     ReleaseDoubleTap, // DoubleTapを離す
@@ -83,8 +84,8 @@ pub fn transition(
             (KeyState::Idle, ActionCommand::ReleaseHold)
         }
         (KeyState::HoldActive, TriggerEvent::Pressed) => {
-            // OSのキーリピートによる再押下イベントをスルーせず、再度ダウンを送信してリピートを発生させる
-            (KeyState::HoldActive, ActionCommand::ExecuteHold)
+            // OSのキーリピートによる再押下イベント
+            (KeyState::HoldActive, ActionCommand::ExecuteHoldRepeat)
         }
 
         // === WAITING FOR DOUBLE TAP ===

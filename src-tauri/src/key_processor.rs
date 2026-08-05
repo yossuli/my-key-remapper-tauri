@@ -71,6 +71,15 @@ impl KeyProcessor {
         }
     }
 
+    fn is_repeat_enabled(vk: u16, trigger: &str, config: &Config) -> bool {
+        if let Some(bindings) = Self::get_bindings(vk, config) {
+            if let Some(binding) = bindings.iter().find(|b| b.trigger == trigger) {
+                return binding.action.get("repeat").and_then(|v| v.as_bool()).unwrap_or(false);
+            }
+        }
+        false
+    }
+
     fn get_timing(vk: u16, trigger: &str, config: &Config) -> Option<u32> {
         Self::get_bindings(vk, config)
             .and_then(|b| b.iter().find(|x| x.trigger == trigger))
@@ -99,6 +108,13 @@ impl KeyProcessor {
             ActionCommand::ExecuteHold => {
                 if let Some(target) = Self::get_target_vk(vk, "hold", config) {
                     Self::send_key(target, false);
+                }
+            }
+            ActionCommand::ExecuteHoldRepeat => {
+                if Self::is_repeat_enabled(vk, "hold", config) {
+                    if let Some(target) = Self::get_target_vk(vk, "hold", config) {
+                        Self::send_key(target, false);
+                    }
                 }
             }
             ActionCommand::ReleaseHold => {
