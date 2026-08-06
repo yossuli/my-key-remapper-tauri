@@ -5,10 +5,10 @@ use std::time::Instant;
 pub enum KeyState {
     Idle,
     WaitingForHold { pressed_at: Instant },
-    HoldActive,
+    HoldActive { activated_at: Instant, last_repeated_at: Instant },
     WaitingForDoubleTap { first_released_at: Instant },
-    TapActive,
-    DoubleTapActive,
+    TapActive { activated_at: Instant, last_repeated_at: Instant },
+    DoubleTapActive { activated_at: Instant, last_repeated_at: Instant },
 }
 
 /// 状態を遷移させるための入力イベント
@@ -18,6 +18,7 @@ pub enum TriggerEvent {
     Released,
     Timeout,
     OtherKeyPressed,
+    CustomRepeat,
 }
 
 /// 遷移に伴って発火すべきアクション
@@ -28,8 +29,8 @@ pub enum ActionCommand {
     ReleaseTap,       // Tapを離す
     ExecuteTapAtomic, // Tapを押下してすぐ離す（一連の動作）
     ExecuteHold,      // Holdを押下
-    ExecuteHoldRepeat,// Holdを押下（リピート用）
     ReleaseHold,      // Holdを離す
+    ExecuteHoldRepeat, // Holdを押下し続ける（リピート）
     ExecuteDoubleTap, // DoubleTapを押下
     ReleaseDoubleTap, // DoubleTapを離す
 }
@@ -53,7 +54,8 @@ pub fn transition(
                     ActionCommand::None,
                 )
             } else {
-                (KeyState::TapActive, ActionCommand::ExecuteTap)
+                let now = Instant::now();
+                (KeyState::TapActive { activated_at: now, last_repeated_at: now }, ActionCommand::ExecuteTap)
             }
         }
 
@@ -61,9 +63,11 @@ pub fn transition(
         (KeyState::WaitingForHold { .. }, TriggerEvent::Timeout)
         | (KeyState::WaitingForHold { .. }, TriggerEvent::OtherKeyPressed) => {
             if has_hold {
-                (KeyState::HoldActive, ActionCommand::ExecuteHold)
+                let now = Instant::now();
+                (KeyState::HoldActive { activated_at: now, last_repeated_at: now }, ActionCommand::ExecuteHold)
             } else {
-                (KeyState::TapActive, ActionCommand::ExecuteTap)
+                let now = Instant::now();
+                (KeyState::TapActive { activated_at: now, last_repeated_at: now }, ActionCommand::ExecuteTap)
             }
         }
         (KeyState::WaitingForHold { .. }, TriggerEvent::Released) => {
@@ -80,12 +84,15 @@ pub fn transition(
         }
 
         // === HOLD ACTIVE ===
-        (KeyState::HoldActive, TriggerEvent::Released) => {
+        (KeyState::HoldActive { .. }, TriggerEvent::Released) => {
             (KeyState::Idle, ActionCommand::ReleaseHold)
         }
-        (KeyState::HoldActive, TriggerEvent::Pressed) => {
-            // OSのキーリピートによる再押下イベント
-            (KeyState::HoldActive, ActionCommand::ExecuteHoldRepeat)
+        (KeyState::HoldActive { activated_at, .. }, TriggerEvent::Pressed) => {
+            // OSのキーリピートによる再押下イベントをスルーせず、再度ダウンを送信してリピートを発生させる
+            (KeyState::HoldActive { activated_at, last_repeated_at: Instant::now() }, ActionCommand::ExecuteHoldRepeat)
+        }
+        (KeyState::HoldActive { activated_at, .. }, TriggerEvent::CustomRepeat) => {
+            (KeyState::HoldActive { activated_at, last_repeated_at: Instant::now() }, ActionCommand::ExecuteHoldRepeat)
         }
 
         // === WAITING FOR DOUBLE TAP ===
@@ -94,19 +101,24 @@ pub fn transition(
             (KeyState::Idle, ActionCommand::ExecuteTapAtomic)
         }
         (KeyState::WaitingForDoubleTap { .. }, TriggerEvent::Pressed) => {
-            (KeyState::DoubleTapActive, ActionCommand::ExecuteDoubleTap)
+            let now = Instant::now();
+            (KeyState::DoubleTapActive { activated_at: now, last_repeated_at: now }, ActionCommand::ExecuteDoubleTap)
         }
 
         // === TAP ACTIVE ===
-        (KeyState::TapActive, TriggerEvent::Released) => (KeyState::Idle, ActionCommand::ReleaseTap),
-        (KeyState::TapActive, TriggerEvent::Pressed) => (KeyState::TapActive, ActionCommand::ExecuteTap),
+        (KeyState::TapActive { .. }, TriggerEvent::Released) => (KeyState::Idle, ActionCommand::ReleaseTap),
+        (KeyState::TapActive { activated_at, .. }, TriggerEvent::Pressed) => (KeyState::TapActive { activated_at, last_repeated_at: Instant::now() }, ActionCommand::ExecuteTap),
+        (KeyState::TapActive { activated_at, .. }, TriggerEvent::CustomRepeat) => (KeyState::TapActive { activated_at, last_repeated_at: Instant::now() }, ActionCommand::ExecuteTap),
 
         // === DOUBLE TAP ACTIVE ===
-        (KeyState::DoubleTapActive, TriggerEvent::Released) => {
+        (KeyState::DoubleTapActive { .. }, TriggerEvent::Released) => {
             (KeyState::Idle, ActionCommand::ReleaseDoubleTap)
         }
-        (KeyState::DoubleTapActive, TriggerEvent::Pressed) => {
-            (KeyState::DoubleTapActive, ActionCommand::ExecuteDoubleTap)
+        (KeyState::DoubleTapActive { activated_at, .. }, TriggerEvent::Pressed) => {
+            (KeyState::DoubleTapActive { activated_at, last_repeated_at: Instant::now() }, ActionCommand::ExecuteDoubleTap)
+        }
+        (KeyState::DoubleTapActive { activated_at, .. }, TriggerEvent::CustomRepeat) => {
+            (KeyState::DoubleTapActive { activated_at, last_repeated_at: Instant::now() }, ActionCommand::ExecuteDoubleTap)
         }
 
         // Ignore redundant or invalid events (e.g. OtherKeyPressed while HoldActive)
