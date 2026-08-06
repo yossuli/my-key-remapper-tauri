@@ -40,8 +40,6 @@ pub struct Config {
     #[serde(default)]
     pub layers: Vec<Layer>,
     #[serde(default)]
-    pub macros: Vec<Value>,
-    #[serde(default)]
     pub layer_order: Vec<String>,
     #[serde(default)]
     pub global_settings: Value,
@@ -183,7 +181,7 @@ fn update_layer(layer_id: String, updates: Value) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let mut app = tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
@@ -229,10 +227,10 @@ pub fn run() {
                         "defaultTapIntervalMs": 300
                     }
                 })).expect("Failed to parse initial config");
-                
+
                 // Save it right away
                 save_config_to_disk(&config);
-                
+
                 config
             });
 
@@ -240,7 +238,7 @@ pub fn run() {
 
             #[cfg(windows)]
             hook::setup_hook(app.handle().clone());
-            
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
