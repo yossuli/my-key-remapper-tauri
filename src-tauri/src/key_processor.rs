@@ -93,8 +93,20 @@ impl KeyProcessor {
         None
     }
 
+    const VK_SHIFT: u16 = 0x10;
+    const VK_CONTROL: u16 = 0x11;
+    const VK_MENU: u16 = 0x12; // Alt
+    const VK_LWIN: u16 = 0x5B;
+    const VK_RWIN: u16 = 0x5C;
+    const VK_LSHIFT: u16 = 0xA0;
+    const VK_RSHIFT: u16 = 0xA1;
+    const VK_LCONTROL: u16 = 0xA2;
+    const VK_RCONTROL: u16 = 0xA3;
+    const VK_LMENU: u16 = 0xA4;
+    const VK_RMENU: u16 = 0xA5;
+
     fn is_modifier(vk: u16) -> bool {
-        matches!(vk, 0x10 | 0x11 | 0x12 | 0x5B | 0x5C | 0xA0 | 0xA1 | 0xA2 | 0xA3 | 0xA4 | 0xA5)
+        matches!(vk, Self::VK_SHIFT | Self::VK_CONTROL | Self::VK_MENU | Self::VK_LWIN | Self::VK_RWIN | Self::VK_LSHIFT | Self::VK_RSHIFT | Self::VK_LCONTROL | Self::VK_RCONTROL | Self::VK_LMENU | Self::VK_RMENU)
     }
 
     fn compute_active_modifiers(active_layers: &[String], config: &Config) -> HashSet<u16> {
@@ -103,16 +115,16 @@ impl KeyProcessor {
             if let Some(layer) = config.layers.iter().find(|l| &l.id == layer_id) {
                 if let Some(def_mods) = &layer.default_modifiers {
                     if let Some(shift) = def_mods.get("shift").and_then(|v| v.as_bool()) {
-                        if shift { mods.insert(160); }
+                        if shift { mods.insert(Self::VK_LSHIFT); }
                     }
                     if let Some(ctrl) = def_mods.get("ctrl").and_then(|v| v.as_bool()) {
-                        if ctrl { mods.insert(162); }
+                        if ctrl { mods.insert(Self::VK_LCONTROL); }
                     }
                     if let Some(alt) = def_mods.get("alt").and_then(|v| v.as_bool()) {
-                        if alt { mods.insert(164); }
+                        if alt { mods.insert(Self::VK_LMENU); }
                     }
                     if let Some(win) = def_mods.get("win").and_then(|v| v.as_bool()) {
-                        if win { mods.insert(91); }
+                        if win { mods.insert(Self::VK_LWIN); }
                     }
                 }
             }
@@ -267,7 +279,7 @@ impl KeyProcessor {
 
     pub fn process_key(vk_code: u16, is_down: bool, config: &Config) -> HookAction {
         let mut state_guard = get_state().lock().unwrap();
-        // println!("DEBUG[process_key]: vk={}, is_down={}", vk_code, is_down);
+
 
         if is_down {
             let mut other_cmds = Vec::new();
@@ -280,6 +292,7 @@ impl KeyProcessor {
                         TriggerEvent::OtherKeyPressed,
                         has_hold,
                         has_double_tap,
+                        Instant::now(),
                     );
                     *other_state = new_state;
                     other_cmds.push((other_vk, cmd));
@@ -333,8 +346,8 @@ impl KeyProcessor {
             TriggerEvent::Released
         };
 
-        let (new_state, cmd) = transition(current_state, event, has_hold, has_double_tap);
-        println!("DEBUG[transition]: vk={} event={:?} state {:?} -> {:?} (cmd: {:?})", vk_code, event, current_state, new_state, cmd);
+        let (new_state, cmd) = transition(current_state, event, has_hold, has_double_tap, Instant::now());
+        log::debug!("DEBUG[transition]: vk={} event={:?} state {:?} -> {:?} (cmd: {:?})", vk_code, event, current_state, new_state, cmd);
 
         if new_state == KeyState::Idle {
             state_guard.key_states.remove(&vk_code);
@@ -388,8 +401,9 @@ impl KeyProcessor {
                         TriggerEvent::Timeout,
                         has_hold,
                         has_double_tap,
+                        now,
                     );
-                    println!("DEBUG[timeout]: vk={} state {:?} -> {:?} (cmd: {:?})", vk, key_state, new_state, cmd);
+                    log::debug!("DEBUG[timeout]: vk={} state {:?} -> {:?} (cmd: {:?})", vk, key_state, new_state, cmd);
                     *key_state = new_state;
                     cmds.push((vk, cmd));
                 } else {
@@ -422,8 +436,9 @@ impl KeyProcessor {
                             TriggerEvent::CustomRepeat,
                             has_hold,
                             has_double_tap,
+                            now,
                         );
-                        println!("DEBUG[custom_repeat]: vk={} state {:?} -> {:?} (cmd: {:?})", vk, key_state, new_state, cmd);
+                        log::debug!("DEBUG[custom_repeat]: vk={} state {:?} -> {:?} (cmd: {:?})", vk, key_state, new_state, cmd);
                         *key_state = new_state;
                         cmds.push((vk, cmd));
                     }

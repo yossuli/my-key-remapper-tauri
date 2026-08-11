@@ -85,6 +85,7 @@ fn update_global_settings(settings: Value, state: State<'_, ConfigState>) {
 
 #[tauri::command(rename = "get-layer-stack")]
 fn get_layer_stack() -> Vec<String> {
+    // TODO: 実際の状態から取得するようにする
     vec!["base".to_string()]
 }
 
@@ -147,6 +148,7 @@ fn set_remap_enabled(enabled: bool) {
 
 #[tauri::command(rename = "add-layer")]
 fn add_layer(layer_id: String) {
+    // TODO: スタブ。実際には状態に反映する処理が必要
     log::info!("add_layer: {}", layer_id);
 }
 
@@ -157,6 +159,7 @@ fn remove_layer(layer_id: String) {
 
 #[tauri::command(rename = "reorder-layers")]
 fn reorder_layers(new_order: Vec<String>) {
+    // TODO: スタブ。実際には状態に反映する処理が必要
     log::info!("reorder_layers: {:?}", new_order);
 }
 
