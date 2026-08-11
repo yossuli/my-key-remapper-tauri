@@ -1,36 +1,18 @@
+pub mod state;
+pub mod utils;
+pub mod actions;
+
 use crate::Config;
 use crate::state_machine::{transition, ActionCommand, KeyState, TriggerEvent};
-use std::collections::{HashMap, HashSet};
-use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
-use windows::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
-};
+use state::get_state;
+use utils::{send_key_down, send_key_up, send_key_raw, is_modifier, apply_layer_modifiers};
+use actions::apply_action;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum HookAction {
     Block,
     PassThrough,
-}
-
-struct ProcessorState {
-    key_states: HashMap<u16, KeyState>,
-    active_layers: Vec<String>,
-    pressed_vks: HashMap<u16, Vec<u16>>,
-    momentary_layers: HashMap<u16, String>,
-}
-
-static STATE: OnceLock<Mutex<ProcessorState>> = OnceLock::new();
-
-fn get_state() -> &'static Mutex<ProcessorState> {
-    STATE.get_or_init(|| {
-        Mutex::new(ProcessorState {
-            key_states: HashMap::new(),
-            active_layers: vec!["base".to_string()],
-            pressed_vks: HashMap::new(),
-            momentary_layers: HashMap::new(),
-        })
-    })
 }
 
 pub struct KeyProcessor;
@@ -93,118 +75,6 @@ impl KeyProcessor {
         None
     }
 
-    const VK_SHIFT: u16 = 0x10;
-    const VK_CONTROL: u16 = 0x11;
-    const VK_MENU: u16 = 0x12; // Alt
-    const VK_LWIN: u16 = 0x5B;
-    const VK_RWIN: u16 = 0x5C;
-    const VK_LSHIFT: u16 = 0xA0;
-    const VK_RSHIFT: u16 = 0xA1;
-    const VK_LCONTROL: u16 = 0xA2;
-    const VK_RCONTROL: u16 = 0xA3;
-    const VK_LMENU: u16 = 0xA4;
-    const VK_RMENU: u16 = 0xA5;
-
-    fn is_modifier(vk: u16) -> bool {
-        matches!(vk, Self::VK_SHIFT | Self::VK_CONTROL | Self::VK_MENU | Self::VK_LWIN | Self::VK_RWIN | Self::VK_LSHIFT | Self::VK_RSHIFT | Self::VK_LCONTROL | Self::VK_RCONTROL | Self::VK_LMENU | Self::VK_RMENU)
-    }
-
-    fn compute_active_modifiers(active_layers: &[String], config: &Config) -> HashSet<u16> {
-        let mut mods = HashSet::new();
-        for layer_id in active_layers {
-            if let Some(layer) = config.layers.iter().find(|l| &l.id == layer_id) {
-                if let Some(def_mods) = &layer.default_modifiers {
-                    if let Some(shift) = def_mods.get("shift").and_then(|v| v.as_bool()) {
-                        if shift { mods.insert(Self::VK_LSHIFT); }
-                    }
-                    if let Some(ctrl) = def_mods.get("ctrl").and_then(|v| v.as_bool()) {
-                        if ctrl { mods.insert(Self::VK_LCONTROL); }
-                    }
-                    if let Some(alt) = def_mods.get("alt").and_then(|v| v.as_bool()) {
-                        if alt { mods.insert(Self::VK_LMENU); }
-                    }
-                    if let Some(win) = def_mods.get("win").and_then(|v| v.as_bool()) {
-                        if win { mods.insert(Self::VK_LWIN); }
-                    }
-                }
-            }
-        }
-        mods
-    }
-
-    fn apply_layer_modifiers(old_layers: &[String], new_layers: &[String], config: &Config) {
-        let old_mods = Self::compute_active_modifiers(old_layers, config);
-        let new_mods = Self::compute_active_modifiers(new_layers, config);
-
-        for &modifier in new_mods.difference(&old_mods) {
-            Self::send_key_raw(modifier, false); // Send DOWN for new modifiers
-        }
-        for &modifier in old_mods.difference(&new_mods) {
-            Self::send_key_raw(modifier, true);  // Send UP for removed modifiers
-        }
-    }
-
-    fn apply_action(physical_vk: u16, action: &serde_json::Value, is_atomic: bool, config: &Config) {
-        let action_type = action.get("type").and_then(|v| v.as_str()).unwrap_or("none");
-        match action_type {
-            "remap" => {
-                if let Some(keys) = action.get("keys").and_then(|v| v.as_array()) {
-                    if !keys.is_empty() {
-                        let mut target_vks = Vec::new();
-                        for k in keys {
-                            if let Some(vk) = k.as_u64() {
-                                target_vks.push(vk as u16);
-                            }
-                        }
-
-                        for &target_vk in &target_vks {
-                            Self::send_key_down(physical_vk, target_vk);
-                        }
-                        
-                        let repeat = action.get("repeat").and_then(|v| v.as_bool()).unwrap_or(false);
-                        let has_non_modifier = target_vks.iter().any(|&vk| !Self::is_modifier(vk));
-                        
-                        if is_atomic || (!repeat && has_non_modifier) {
-                            for &target_vk in target_vks.iter().rev() {
-                                Self::send_key_up(physical_vk, target_vk);
-                            }
-                        }
-                    }
-                }
-            }
-            "layerToggle" => {
-                if let Some(layer_id) = action.get("layerId").and_then(|v| v.as_str()) {
-                    let (old_layers, new_layers) = {
-                        let mut state = get_state().lock().unwrap();
-                        let old_layers = state.active_layers.clone();
-                        if state.active_layers.contains(&layer_id.to_string()) {
-                            state.active_layers.retain(|l| l != layer_id);
-                        } else {
-                            state.active_layers.push(layer_id.to_string());
-                        }
-                        (old_layers, state.active_layers.clone())
-                    };
-                    Self::apply_layer_modifiers(&old_layers, &new_layers, config);
-                }
-            }
-            "layerMomentary" => {
-                if let Some(layer_id) = action.get("layerId").and_then(|v| v.as_str()) {
-                    let (old_layers, new_layers) = {
-                        let mut state = get_state().lock().unwrap();
-                        let old_layers = state.active_layers.clone();
-                        state.momentary_layers.insert(physical_vk, layer_id.to_string());
-                        if !state.active_layers.contains(&layer_id.to_string()) {
-                            state.active_layers.push(layer_id.to_string());
-                        }
-                        (old_layers, state.active_layers.clone())
-                    };
-                    Self::apply_layer_modifiers(&old_layers, &new_layers, config);
-                }
-            }
-            _ => {}
-        }
-    }
-
     fn execute_action(cmd: ActionCommand, vk: u16, config: &Config) {
         let active_layers = get_state().lock().unwrap().active_layers.clone();
 
@@ -212,23 +82,23 @@ impl KeyProcessor {
             ActionCommand::None => {}
             ActionCommand::ExecuteTap => {
                 if let Some(action) = Self::get_action(vk, "tap", config, &active_layers) {
-                    Self::apply_action(vk, action, false, config);
+                    apply_action(vk, action, false, config);
                 } else {
-                    Self::send_key_down(vk, vk);
-                    Self::send_key_up(vk, vk);
+                    send_key_down(vk, vk);
+                    send_key_up(vk, vk);
                 }
             }
             ActionCommand::ExecuteTapAtomic => {
                 if let Some(action) = Self::get_action(vk, "tap", config, &active_layers) {
-                    Self::apply_action(vk, action, true, config);
+                    apply_action(vk, action, true, config);
                 } else {
-                    Self::send_key_down(vk, vk);
-                    Self::send_key_up(vk, vk);
+                    send_key_down(vk, vk);
+                    send_key_up(vk, vk);
                 }
             }
             ActionCommand::ExecuteHold => {
                 if let Some(action) = Self::get_action(vk, "hold", config, &active_layers) {
-                    Self::apply_action(vk, action, false, config);
+                    apply_action(vk, action, false, config);
                 }
             }
             ActionCommand::ExecuteHoldRepeat => {
@@ -244,9 +114,9 @@ impl KeyProcessor {
                                 }
 
                                 for &target_vk in &target_vks {
-                                    if !Self::is_modifier(target_vk) {
-                                        Self::send_key_down(vk, target_vk);
-                                        Self::send_key_up(vk, target_vk);
+                                    if !is_modifier(target_vk) {
+                                        send_key_down(vk, target_vk);
+                                        send_key_up(vk, target_vk);
                                     }
                                 }
                             }
@@ -256,21 +126,21 @@ impl KeyProcessor {
             }
             ActionCommand::ExecuteDoubleTap => {
                 if let Some(action) = Self::get_action(vk, "doubleTap", config, &active_layers) {
-                    Self::apply_action(vk, action, false, config);
+                    apply_action(vk, action, false, config);
                 }
             }
             ActionCommand::ReleaseTap | ActionCommand::ReleaseHold | ActionCommand::ReleaseDoubleTap => {
                 let mut state = get_state().lock().unwrap();
                 let vks = state.pressed_vks.remove(&vk).unwrap_or_default();
                 for target in vks {
-                    Self::send_key_raw(target, true);
+                    send_key_raw(target, true);
                 }
                 if let Some(layer_id) = state.momentary_layers.remove(&vk) {
                     let old_layers = state.active_layers.clone();
                     state.active_layers.retain(|l| l != &layer_id);
                     let new_layers = state.active_layers.clone();
                     drop(state);
-                    Self::apply_layer_modifiers(&old_layers, &new_layers, config);
+                    apply_layer_modifiers(&old_layers, &new_layers, config);
                     return;
                 }
             }
@@ -279,7 +149,6 @@ impl KeyProcessor {
 
     pub fn process_key(vk_code: u16, is_down: bool, config: &Config) -> HookAction {
         let mut state_guard = get_state().lock().unwrap();
-
 
         if is_down {
             let mut other_cmds = Vec::new();
@@ -383,7 +252,6 @@ impl KeyProcessor {
                     KeyState::WaitingForHold { pressed_at } => {
                         let timing = Self::get_timing(vk, "hold", &config, &active_layers).unwrap_or(200);
                         let elapsed = now.duration_since(*pressed_at).as_millis();
-                        // println!("DEBUG: hold timeout check for vk {} (elapsed: {}, timing: {})", vk, elapsed, timing);
                         elapsed >= timing as u128
                     }
                     KeyState::WaitingForDoubleTap { first_released_at } => {
@@ -452,41 +320,5 @@ impl KeyProcessor {
                 Self::execute_action(cmd, vk, &config);
             }
         });
-    }
-
-    fn send_key_raw(vk: u16, is_up: bool) {
-        let dw_flags = if is_up {
-            KEYEVENTF_KEYUP
-        } else {
-            windows::Win32::UI::Input::KeyboardAndMouse::KEYBD_EVENT_FLAGS(0)
-        };
-
-        let input = INPUT {
-            r#type: INPUT_KEYBOARD,
-            Anonymous: INPUT_0 {
-                ki: KEYBDINPUT {
-                    wVk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY(vk),
-                    wScan: 0,
-                    dwFlags: dw_flags,
-                    time: 0,
-                    dwExtraInfo: 0,
-                },
-            },
-        };
-        unsafe {
-            SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
-        }
-    }
-
-    fn send_key_down(physical_vk: u16, virtual_vk: u16) {
-        get_state().lock().unwrap().pressed_vks.entry(physical_vk).or_default().push(virtual_vk);
-        Self::send_key_raw(virtual_vk, false);
-    }
-
-    fn send_key_up(physical_vk: u16, virtual_vk: u16) {
-        if let Some(vks) = get_state().lock().unwrap().pressed_vks.get_mut(&physical_vk) {
-            vks.retain(|&v| v != virtual_vk);
-        }
-        Self::send_key_raw(virtual_vk, true);
     }
 }
