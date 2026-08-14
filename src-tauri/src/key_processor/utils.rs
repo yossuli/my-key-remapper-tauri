@@ -94,26 +94,18 @@ pub fn apply_layer_modifiers(old_layers: &[String], new_layers: &[String], confi
     }
 }
 
+use windows::Win32::UI::WindowsAndMessaging::SetCursorPos;
+
 pub fn send_mouse_move(x: i32, y: i32) {
-    let input = INPUT {
-        r#type: INPUT_MOUSE,
-        Anonymous: INPUT_0 {
-            mi: MOUSEINPUT {
-                dx: (x * 65535) / 1920, // Example normalization, actual is screen dependent
-                dy: (y * 65535) / 1080,
-                mouseData: 0,
-                dwFlags: MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
-                time: 0,
-                dwExtraInfo: 0,
-            },
-        },
-    };
+    log::info!("send_mouse_move: x={}, y={}", x, y);
     unsafe {
-        SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
+        let result = SetCursorPos(x, y);
+        log::info!("SetCursorPos result: {:?}", result);
     }
 }
 
 pub fn send_mouse_click(button: &str, click_count: u32) {
+    log::info!("send_mouse_click: button={}, count={}", button, click_count);
     let (down_flag, up_flag) = match button {
         "right" => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
         "middle" => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP),
@@ -137,6 +129,7 @@ pub fn send_mouse_click(button: &str, click_count: u32) {
     }
 
     unsafe {
-        SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+        let result = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+        log::info!("send_mouse_click result: {}", result);
     }
 }

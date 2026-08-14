@@ -9,10 +9,13 @@ fn execute_macro_sync(macro_id: &str, config: &Config, depth: u32) {
         return;
     }
 
+    log::info!("Executing macro: {} (depth: {})", macro_id, depth);
+
     if let Some(macro_def) = config.macros.iter().find(|m| m.get("id").and_then(|v| v.as_str()) == Some(macro_id)) {
         if let Some(actions) = macro_def.get("actions").and_then(|v| v.as_array()) {
-            for step in actions {
+            for (i, step) in actions.iter().enumerate() {
                 if let Some(action_type) = step.get("type").and_then(|v| v.as_str()) {
+                    log::info!("  Step {}: type={}", i, action_type);
                     match action_type {
                         "remap" => {
                             if let Some(keys) = step.get("keys").and_then(|v| v.as_array()) {
@@ -22,6 +25,7 @@ fn execute_macro_sync(macro_id: &str, config: &Config, depth: u32) {
                                         vks.push(vk as u16);
                                     }
                                 }
+                                log::info!("    remap keys: {:?}", vks);
                                 for &vk in &vks {
                                     send_key_down(vk, vk);
                                 }
@@ -32,26 +36,30 @@ fn execute_macro_sync(macro_id: &str, config: &Config, depth: u32) {
                         }
                         "delay" => {
                             if let Some(delay_ms) = step.get("delayMs").and_then(|v| v.as_u64()) {
+                                log::info!("    delay: {}ms", delay_ms);
                                 thread::sleep(Duration::from_millis(delay_ms));
                             }
                         }
                         "mouseMove" => {
                             let x = step.get("x").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                             let y = step.get("y").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                            log::info!("    mouseMove: ({}, {})", x, y);
                             crate::key_processor::utils::send_mouse_move(x, y);
                         }
                         "mouseClick" => {
                             let button = step.get("button").and_then(|v| v.as_str()).unwrap_or("left");
                             let click_count = step.get("clickCount").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
+                            log::info!("    mouseClick: button={}, count={}", button, click_count);
                             crate::key_processor::utils::send_mouse_click(button, click_count);
                         }
                         "macro" => {
                             if let Some(nested_macro_id) = step.get("macroId").and_then(|v| v.as_str()) {
+                                log::info!("    nested macro: {}", nested_macro_id);
                                 execute_macro_sync(nested_macro_id, config, depth + 1);
                             }
                         }
                         _ => {
-                            // Other actions in macros
+                            log::info!("    unknown action type");
                         }
                     }
                 }
