@@ -43,6 +43,8 @@ pub struct Config {
     pub layer_order: Vec<String>,
     #[serde(default)]
     pub global_settings: Value,
+    #[serde(skip)]
+    pub macros: Vec<Value>,
 }
 
 pub struct ConfigState {
@@ -57,6 +59,11 @@ fn get_mappings(state: State<'_, ConfigState>) -> Config {
 fn get_config_path() -> std::path::PathBuf {
     let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
     std::path::PathBuf::from(app_data).join("my-key-remapper").join("key-mapping-config-v2.json")
+}
+
+fn get_macros_path() -> std::path::PathBuf {
+    let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
+    std::path::PathBuf::from(&app_data).join("my-key-remapper").join("key-mapping-macros-v2.json")
 }
 
 fn save_config_to_disk(config: &Config) {
@@ -95,8 +102,30 @@ fn get_pressed_keys() -> Vec<u32> {
 }
 
 #[tauri::command(rename = "get-macros")]
-fn get_macros() -> Value {
-    serde_json::json!([])
+fn get_macros(state: State<'_, ConfigState>) -> Value {
+    let config = (**state.config.load()).clone();
+    serde_json::to_value(&config.macros).unwrap_or(serde_json::json!([]))
+}
+
+#[tauri::command(rename = "save-macros")]
+fn save_macros(macros: Vec<Value>, state: State<'_, ConfigState>) {
+    log::info!("save_macros: {:?}", macros);
+    let mut config = (**state.config.load()).clone();
+    config.macros = macros.clone();
+    
+    let macros_path = get_macros_path();
+    if let Some(parent) = macros_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(json) = serde_json::to_string_pretty(&macros) {
+        if let Err(e) = std::fs::write(&macros_path, json) {
+            log::error!("Failed to save macros to {:?}: {}", macros_path, e);
+        } else {
+            log::info!("Saved macros to {:?}", macros_path);
+        }
+    }
+    
+    state.config.store(Arc::new(config));
 }
 
 #[tauri::command(rename = "release-all-keys")]
@@ -205,7 +234,21 @@ pub fn run() {
                 }
             }
 
-            let config_to_use = loaded_config.unwrap_or_else(|| {
+            let macros_path = get_macros_path();
+            let mut loaded_macros = Vec::new();
+            if let Ok(json) = std::fs::read_to_string(&macros_path) {
+                match serde_json::from_str::<Vec<Value>>(&json) {
+                    Ok(parsed) => {
+                        loaded_macros = parsed;
+                        log::info!("Loaded macros from disk: {:?}", macros_path);
+                    },
+                    Err(e) => {
+                        log::error!("Failed to parse existing macros ({:?}): {}", macros_path, e);
+                    }
+                }
+            }
+
+            let mut config_to_use = loaded_config.unwrap_or_else(|| {
                 log::info!("Using default config");
                 let config: Config = serde_json::from_value(serde_json::json!({
                     "version": 1,
@@ -237,6 +280,8 @@ pub fn run() {
                 config
             });
 
+            config_to_use.macros = loaded_macros;
+
             app.manage(ConfigState { config: ArcSwap::from(Arc::new(config_to_use)) });
 
             #[cfg(windows)]
@@ -253,6 +298,7 @@ pub fn run() {
             get_layer_stack,
             get_pressed_keys,
             get_macros,
+            save_macros,
             release_all_keys,
             save_key_config,
             set_remap_enabled,
