@@ -254,17 +254,47 @@ impl KeyProcessor {
                 let mut next_timeout: Option<Instant> = None;
 
                 for (&vk, key_state) in state_guard.key_states.iter_mut() {
-                    let mut process_state = |target_time: Instant| {
+                    let mut target_time_opt = None;
+                    let mut is_custom_repeat = false;
+
+                    match key_state {
+                        KeyState::WaitingForHold { pressed_at } => {
+                            let timing = Self::get_timing(vk, "hold", &config, &active_layers).unwrap_or(200);
+                            target_time_opt = Some(*pressed_at + std::time::Duration::from_millis(timing as u64));
+                        }
+                        KeyState::WaitingForDoubleTap { first_released_at } => {
+                            let timing = Self::get_timing(vk, "doubleTap", &config, &active_layers).unwrap_or(200);
+                            target_time_opt = Some(*first_released_at + std::time::Duration::from_millis(timing as u64));
+                        }
+                        KeyState::HoldActive { last_repeated_at, .. } => {
+                            if let Some(interval) = Self::get_repeat_interval(vk, "hold", &config, &active_layers) {
+                                target_time_opt = Some(*last_repeated_at + std::time::Duration::from_millis(interval as u64));
+                                is_custom_repeat = true;
+                            }
+                        }
+                        KeyState::TapActive { last_repeated_at, .. } => {
+                            if let Some(interval) = Self::get_repeat_interval(vk, "tap", &config, &active_layers) {
+                                target_time_opt = Some(*last_repeated_at + std::time::Duration::from_millis(interval as u64));
+                                is_custom_repeat = true;
+                            }
+                        }
+                        _ => {}
+                    }
+
+                    if let Some(target_time) = target_time_opt {
                         if now >= target_time {
                             let (has_hold, has_double_tap) = Self::has_triggers(vk, &config, &active_layers);
+                            let event = if is_custom_repeat { TriggerEvent::CustomRepeat } else { TriggerEvent::Timeout };
                             let (new_state, cmd) = transition(
                                 *key_state,
-                                TriggerEvent::Timeout,
+                                event,
                                 has_hold,
                                 has_double_tap,
                                 now,
                             );
-                            log::debug!("DEBUG[timeout]: vk={} state {:?} -> {:?} (cmd: {:?})", vk, key_state, new_state, cmd);
+                            if event == TriggerEvent::Timeout {
+                                log::debug!("DEBUG[timeout]: vk={} state {:?} -> {:?} (cmd: {:?})", vk, key_state, new_state, cmd);
+                            }
                             *key_state = new_state;
                             cmds.push((vk, cmd));
                         } else {
@@ -272,65 +302,8 @@ impl KeyProcessor {
                                 next_timeout = Some(target_time);
                             }
                         }
-                    };
-
-                    match key_state {
-                        KeyState::WaitingForHold { pressed_at } => {
-                            let timing = Self::get_timing(vk, "hold", &config, &active_layers).unwrap_or(200);
-                            let target_time = *pressed_at + std::time::Duration::from_millis(timing as u64);
-                            process_state(target_time);
-                        }
-                        KeyState::WaitingForDoubleTap { first_released_at } => {
-                            let timing = Self::get_timing(vk, "doubleTap", &config, &active_layers).unwrap_or(200);
-                            let target_time = *first_released_at + std::time::Duration::from_millis(timing as u64);
-                            process_state(target_time);
-                        }
-                        KeyState::HoldActive { last_repeated_at, .. } => {
-                            if let Some(interval) = Self::get_repeat_interval(vk, "hold", &config, &active_layers) {
-                                let target_time = *last_repeated_at + std::time::Duration::from_millis(interval as u64);
-                                if now >= target_time {
-                                    let (has_hold, has_double_tap) = Self::has_triggers(vk, &config, &active_layers);
-                                    let (new_state, cmd) = transition(
-                                        *key_state,
-                                        TriggerEvent::CustomRepeat,
-                                        has_hold,
-                                        has_double_tap,
-                                        now,
-                                    );
-                                    *key_state = new_state;
-                                    cmds.push((vk, cmd));
-                                } else {
-                                    if next_timeout.map_or(true, |t| target_time < t) {
-                                        next_timeout = Some(target_time);
-                                    }
-                                }
-                            }
-                        }
-                        KeyState::TapActive { last_repeated_at, .. } => {
-                            if let Some(interval) = Self::get_repeat_interval(vk, "tap", &config, &active_layers) {
-                                let target_time = *last_repeated_at + std::time::Duration::from_millis(interval as u64);
-                                if now >= target_time {
-                                    let (has_hold, has_double_tap) = Self::has_triggers(vk, &config, &active_layers);
-                                    let (new_state, cmd) = transition(
-                                        *key_state,
-                                        TriggerEvent::CustomRepeat,
-                                        has_hold,
-                                        has_double_tap,
-                                        now,
-                                    );
-                                    *key_state = new_state;
-                                    cmds.push((vk, cmd));
-                                } else {
-                                    if next_timeout.map_or(true, |t| target_time < t) {
-                                        next_timeout = Some(target_time);
-                                    }
-                                }
-                            }
-                        }
-                        _ => {}
                     }
                 }
-
                 state_guard.key_states.retain(|_, s| *s != KeyState::Idle);
                 
                 // 一旦ロックを手放してコマンド実行
