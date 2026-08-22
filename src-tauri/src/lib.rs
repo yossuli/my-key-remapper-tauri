@@ -92,13 +92,26 @@ fn update_global_settings(settings: Value, state: State<'_, ConfigState>) {
 
 #[tauri::command(rename = "get-layer-stack")]
 fn get_layer_stack() -> Vec<String> {
-    // TODO: 実際の状態から取得するようにする
-    vec!["base".to_string()]
+    #[cfg(windows)]
+    {
+        crate::key_processor::state::get_state_wrapper().mutex.lock().unwrap().active_layers.clone()
+    }
+    #[cfg(not(windows))]
+    {
+        vec!["base".to_string()]
+    }
 }
 
 #[tauri::command(rename = "get-pressed-keys")]
 fn get_pressed_keys() -> Vec<u32> {
-    vec![]
+    #[cfg(windows)]
+    {
+        crate::key_processor::state::get_state_wrapper().mutex.lock().unwrap().pressed_vks.keys().map(|&k| k as u32).collect()
+    }
+    #[cfg(not(windows))]
+    {
+        vec![]
+    }
 }
 
 #[tauri::command(rename = "get-macros")]
@@ -176,20 +189,38 @@ fn set_remap_enabled(enabled: bool) {
 }
 
 #[tauri::command(rename = "add-layer")]
-fn add_layer(layer_id: String) {
-    // TODO: スタブ。実際には状態に反映する処理が必要
+fn add_layer(layer_id: String, state: State<'_, ConfigState>) {
     log::info!("add_layer: {}", layer_id);
+    let mut config = (**state.config.load()).clone();
+    if !config.layers.iter().any(|l| l.id == layer_id) {
+        config.layers.push(Layer {
+            id: layer_id.clone(),
+            bindings: HashMap::new(),
+            default_modifiers: None,
+        });
+        config.layer_order.push(layer_id);
+        save_config_to_disk(&config);
+        state.config.store(Arc::new(config));
+    }
 }
 
 #[tauri::command(rename = "remove-layer")]
-fn remove_layer(layer_id: String) {
+fn remove_layer(layer_id: String, state: State<'_, ConfigState>) {
     log::info!("remove_layer: {}", layer_id);
+    let mut config = (**state.config.load()).clone();
+    config.layers.retain(|l| l.id != layer_id);
+    config.layer_order.retain(|id| id != &layer_id);
+    save_config_to_disk(&config);
+    state.config.store(Arc::new(config));
 }
 
 #[tauri::command(rename = "reorder-layers")]
-fn reorder_layers(new_order: Vec<String>) {
-    // TODO: スタブ。実際には状態に反映する処理が必要
+fn reorder_layers(new_order: Vec<String>, state: State<'_, ConfigState>) {
     log::info!("reorder_layers: {:?}", new_order);
+    let mut config = (**state.config.load()).clone();
+    config.layer_order = new_order;
+    save_config_to_disk(&config);
+    state.config.store(Arc::new(config));
 }
 
 #[tauri::command(rename = "remove-binding")]
@@ -207,8 +238,26 @@ fn remove_binding(layer_id: String, from: u32, trigger: String, state: State<'_,
 }
 
 #[tauri::command(rename = "update-layer")]
-fn update_layer(layer_id: String, updates: Value) {
+fn update_layer(layer_id: String, updates: Value, state: State<'_, ConfigState>) {
     log::info!("update_layer: layer={}, updates={:?}", layer_id, updates);
+    let mut config = (**state.config.load()).clone();
+    if let Some(layer) = config.layers.iter_mut().find(|l| l.id == layer_id) {
+        if let Some(default_modifiers) = updates.get("defaultModifiers") {
+            layer.default_modifiers = Some(default_modifiers.clone());
+        }
+        if let Some(new_id) = updates.get("id").and_then(|v| v.as_str()) {
+            if new_id != layer_id {
+                layer.id = new_id.to_string();
+                for id in &mut config.layer_order {
+                    if *id == layer_id {
+                        *id = new_id.to_string();
+                    }
+                }
+            }
+        }
+        save_config_to_disk(&config);
+        state.config.store(Arc::new(config));
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
