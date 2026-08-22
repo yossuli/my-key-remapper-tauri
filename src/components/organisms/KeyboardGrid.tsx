@@ -19,7 +19,9 @@ interface KeyboardGridProps {
   onKeyClick: (vk: number) => void;
 }
 
-export function KeyboardGrid({
+import React from "react";
+
+export const KeyboardGrid = React.memo(function KeyboardGrid({
   bindings, // 🚌 → 🚌🔥 (C. UI Configuration)
   keyboardLayout, // 🚌 → 🚌🔥 (C. UI Configuration)
   layout, // 🚌 → 🚌🔥 (C. UI Configuration)
@@ -61,4 +63,4 @@ export function KeyboardGrid({
       )}
     </Mapped>
   );
-}
+});

@@ -70,7 +70,9 @@ interface KeyRemapSectionProps {
 
 const EMPTY_TARGET_KEYS: number[] = [];
 
-export function KeyRemapSection({
+import React from "react";
+
+export const KeyRemapSection = React.memo(function KeyRemapSection({
   layerState,
   layerActions,
   mappingActions,
@@ -159,4 +161,4 @@ export function KeyRemapSection({
       </div>
     </VStack>
   );
-}
+});
