@@ -21,7 +21,7 @@ export interface UseLayerStateReturn {
     selectedTrigger: TriggerType
   ) => (
     action: Action,
-    timing?: { hold?: number; doubleTap?: number; interruptBehavior?: "forceTap" | "ignore" },
+    timing?: { hold?: number; doubleTap?: number; interruptBehavior?: "forceTap" | "forceHold" | "ignore" },
     activeTrigger?: TriggerType
   ) => void;
   removeMapping: (from: number, trigger: TriggerType) => void;

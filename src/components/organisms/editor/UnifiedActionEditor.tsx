@@ -39,7 +39,7 @@ export interface UnifiedActionEditorProps {
   // ハンドラー
   onSave: (
     action: Action,
-    timing?: { hold?: number; doubleTap?: number; interruptBehavior?: "forceTap" | "ignore" },
+    timing?: { hold?: number; doubleTap?: number; interruptBehavior?: "forceTap" | "forceHold" | "ignore" },
     trigger?: TriggerType
   ) => void;
   handleEditorClose: () => void;
@@ -50,7 +50,7 @@ export interface UnifiedActionEditorProps {
   existingTiming?: {
     holdThresholdMs?: number;
     tapIntervalMs?: number;
-    interruptBehavior?: "forceTap" | "ignore";
+    interruptBehavior?: "forceTap" | "forceHold" | "ignore";
   };
 }
 
@@ -89,7 +89,7 @@ export function UnifiedActionEditor({
     number | undefined
   >(undefined);
   const [localInterruptBehavior, setLocalInterruptBehavior] = useState<
-    "forceTap" | "ignore" | undefined
+    "forceTap" | "forceHold" | "ignore" | undefined
   >(undefined);
 
   const handleSaveInternal = useCallback(

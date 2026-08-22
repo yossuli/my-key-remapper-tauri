@@ -53,7 +53,7 @@ export interface UseBindingConfigReturn {
   existingTiming: {
     holdThresholdMs: number | undefined;
     tapIntervalMs: number | undefined;
-    interruptBehavior: "forceTap" | "ignore" | undefined;
+    interruptBehavior: "forceTap" | "forceHold" | "ignore" | undefined;
   };
 }
 
@@ -76,7 +76,7 @@ export function useBindingConfig({
   const [existingTiming, setExistingTiming] = useState<{
     holdThresholdMs: number | undefined;
     tapIntervalMs: number | undefined;
-    interruptBehavior: "forceTap" | "ignore" | undefined;
+    interruptBehavior: "forceTap" | "forceHold" | "ignore" | undefined;
   }>({ holdThresholdMs: undefined, tapIntervalMs: undefined, interruptBehavior: undefined });
 
   const loadBinding = useCallback<UseBindingConfigReturn["loadBinding"]>(

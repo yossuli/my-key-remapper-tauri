@@ -38,6 +38,7 @@ pub enum ActionCommand {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InterruptBehavior {
     ForceTap,
+    ForceHold,
     Ignore,
 }
 
@@ -77,6 +78,7 @@ pub fn transition(
         (KeyState::WaitingForHold { .. }, TriggerEvent::OtherKeyPressed) => {
             match interrupt_behavior {
                 InterruptBehavior::ForceTap => (KeyState::TapActive { activated_at: now, last_repeated_at: now }, ActionCommand::ExecuteTap),
+                InterruptBehavior::ForceHold => (KeyState::HoldActive { activated_at: now, last_repeated_at: now }, ActionCommand::ExecuteHold),
                 InterruptBehavior::Ignore => (state, ActionCommand::None),
             }
         }
@@ -180,6 +182,14 @@ mod tests {
         let (s2, a2) = transition(s1, TriggerEvent::OtherKeyPressed, true, false, InterruptBehavior::Ignore, Instant::now());
         assert!(matches!(s2, KeyState::WaitingForHold { .. }));
         assert_eq!(a2, ActionCommand::None);
+    }
+
+    #[test]
+    fn test_hold_interrupted_force_hold() {
+        let (s1, _) = transition(KeyState::Idle, TriggerEvent::Pressed, true, false, InterruptBehavior::ForceHold, Instant::now());
+        let (s2, a2) = transition(s1, TriggerEvent::OtherKeyPressed, true, false, InterruptBehavior::ForceHold, Instant::now());
+        assert!(matches!(s2, KeyState::HoldActive { .. }));
+        assert_eq!(a2, ActionCommand::ExecuteHold);
     }
 
     #[test]

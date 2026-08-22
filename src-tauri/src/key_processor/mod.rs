@@ -153,6 +153,8 @@ impl KeyProcessor {
                     if let Some(behavior) = &b.interrupt_behavior {
                         if behavior == "ignore" {
                             return crate::state_machine::InterruptBehavior::Ignore;
+                        } else if behavior == "forceHold" {
+                            return crate::state_machine::InterruptBehavior::ForceHold;
                         }
                     }
                 }

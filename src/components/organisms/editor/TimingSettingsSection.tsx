@@ -8,12 +8,12 @@ interface TimingSettingsSectionProps {
   selectedTrigger: TriggerType;
   holdThresholdMs: number | undefined;
   tapIntervalMs: number | undefined;
-  interruptBehavior?: "forceTap" | "ignore";
+  interruptBehavior?: "forceTap" | "forceHold" | "ignore";
   defaultHoldThresholdMs: number | undefined;
   defaultTapIntervalMs: number | undefined;
   setHoldThresholdMs: (ms: number | undefined) => void;
   setTapIntervalMs: (ms: number | undefined) => void;
-  setInterruptBehavior: (behavior: "forceTap" | "ignore" | undefined) => void;
+  setInterruptBehavior: (behavior: "forceTap" | "forceHold" | "ignore" | undefined) => void;
   setIsInputFocused: (focused: boolean) => void;
 }
 
@@ -44,7 +44,7 @@ export function TimingSettingsSection({
           <Label>Hold待機中の他キー入力割り込み</Label>
           <Select
             value={interruptBehavior || "forceTap"}
-            onValueChange={(val) => setInterruptBehavior(val as "forceTap" | "ignore")}
+            onValueChange={(val) => setInterruptBehavior(val as "forceTap" | "forceHold" | "ignore")}
             onOpenChange={setIsInputFocused}
           >
             <SelectTrigger>
@@ -52,7 +52,8 @@ export function TimingSettingsSection({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="forceTap">Tapとして発火 (文字キー向け)</SelectItem>
-              <SelectItem value="ignore">判定保留 (修飾キー向け)</SelectItem>
+              <SelectItem value="forceHold">即座にHold確定 (修飾キー向け)</SelectItem>
+              <SelectItem value="ignore">判定保留</SelectItem>
             </SelectContent>
           </Select>
         </div>
