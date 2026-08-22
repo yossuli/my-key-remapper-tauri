@@ -52,6 +52,17 @@ fn execute_macro_sync(macro_id: &str, config: &Config, depth: u32) {
                             log::info!("    mouseClick: button={}, count={}", button, click_count);
                             crate::key_processor::utils::send_mouse_click(button, click_count);
                         }
+                        "cursorSave" => {
+                            let pos = crate::key_processor::utils::get_mouse_pos();
+                            crate::key_processor::state::get_state().lock().unwrap().saved_mouse_pos = Some(pos);
+                            log::info!("    cursorSave: saved pos ({}, {})", pos.0, pos.1);
+                        }
+                        "cursorRestore" => {
+                            if let Some(pos) = crate::key_processor::state::get_state().lock().unwrap().saved_mouse_pos {
+                                crate::key_processor::utils::send_mouse_move(pos.0, pos.1);
+                                log::info!("    cursorRestore: restored to ({}, {})", pos.0, pos.1);
+                            }
+                        }
                         "macro" => {
                             if let Some(nested_macro_id) = step.get("macroId").and_then(|v| v.as_str()) {
                                 log::info!("    nested macro: {}", nested_macro_id);

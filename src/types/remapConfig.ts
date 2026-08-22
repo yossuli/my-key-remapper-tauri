@@ -1,4 +1,4 @@
-﻿// =====================================
+// =====================================
 // トリガー種別
 // =====================================
 
@@ -97,11 +97,14 @@ export interface MouseClickAction {
   clickCount?: number;
 }
 
-/** カーソル位置復帰アクション */
-export interface CursorReturnAction {
-  type: "cursorReturn";
-  /** 復帰までの遅延時間（ミリ秒） */
-  delayMs: number;
+/** カーソル位置記憶アクション */
+export interface CursorSaveAction {
+  type: "cursorSave";
+}
+
+/** カーソル位置復元アクション */
+export interface CursorRestoreAction {
+  type: "cursorRestore";
 }
 
 /** すべてのアクション種別 */
@@ -112,7 +115,8 @@ export type Action =
   | NoneAction
   | MouseMoveAction
   | MouseClickAction
-  | CursorReturnAction
+  | CursorSaveAction
+  | CursorRestoreAction
   | DelayAction
   | MacroAction;
 // | PassthroughAction;
@@ -214,7 +218,17 @@ export const DEFAULT_REMAP_CONFIG: RemapConfig = {
       defaultModifiers: { shift: true },
     },
   ],
-  macros: [],
+  macros: [
+    {
+      id: "cursor-return-macro",
+      name: "カーソル位置を記憶して復帰",
+      actions: [
+        { type: "cursorSave" },
+        { type: "delay", delayMs: 50 },
+        { type: "cursorRestore" },
+      ],
+    },
+  ],
   layerOrder: ["base", "shift"],
   globalSettings: {
     defaultHoldThresholdMs: 200,

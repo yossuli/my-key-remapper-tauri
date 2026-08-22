@@ -26,7 +26,8 @@ export interface ActionSetters {
     button: "left" | "right" | "middle",
     clickCount: number
   ) => void;
-  setCursorReturnAction: (delayMs: number) => void;
+  setCursorSaveAction: () => void;
+  setCursorRestoreAction: () => void;
   setMacroAction: (macroId: string) => void;
   setDelayAction: (delayMs: number) => void;
   setNoneAction: () => void;
@@ -173,10 +174,16 @@ export function useBindingConfig({
     []
   );
 
-  const setCursorReturnAction = useCallback<
-    ActionSetters["setCursorReturnAction"]
-  >((delayMs) => {
-    setState({ actionType: "cursorReturn", cursorReturnDelayMs: delayMs });
+  const setCursorSaveAction = useCallback<
+    ActionSetters["setCursorSaveAction"]
+  >(() => {
+    setState({ actionType: "cursorSave" });
+  }, []);
+
+  const setCursorRestoreAction = useCallback<
+    ActionSetters["setCursorRestoreAction"]
+  >(() => {
+    setState({ actionType: "cursorRestore" });
   }, []);
 
   const setMacroAction = useCallback<ActionSetters["setMacroAction"]>(
@@ -202,7 +209,8 @@ export function useBindingConfig({
     setLayerAction,
     setMouseMoveAction,
     setMouseClickAction,
-    setCursorReturnAction,
+    setCursorSaveAction,
+    setCursorRestoreAction,
     setMacroAction,
     setDelayAction,
     setNoneAction,

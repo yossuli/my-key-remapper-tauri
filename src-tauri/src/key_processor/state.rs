@@ -7,6 +7,7 @@ pub struct ProcessorState {
     pub active_layers: Vec<String>,
     pub pressed_vks: HashMap<u16, Vec<u16>>,
     pub momentary_layers: HashMap<u16, String>,
+    pub saved_mouse_pos: Option<(i32, i32)>,
 }
 
 static STATE: OnceLock<Mutex<ProcessorState>> = OnceLock::new();
@@ -18,6 +19,7 @@ pub fn get_state() -> &'static Mutex<ProcessorState> {
             active_layers: vec!["base".to_string()],
             pressed_vks: HashMap::new(),
             momentary_layers: HashMap::new(),
+            saved_mouse_pos: None,
         })
     })
 }

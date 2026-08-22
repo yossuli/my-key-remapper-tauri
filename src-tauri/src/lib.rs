@@ -272,7 +272,17 @@ pub fn run() {
                             "defaultModifiers": {"shift": true}
                         }
                     ],
-                    "macros": [],
+                    "macros": [
+                        {
+                            "id": "cursor-return-macro",
+                            "name": "カーソル位置を記憶して復帰",
+                            "actions": [
+                                { "type": "cursorSave" },
+                                { "type": "delay", "delayMs": 50 },
+                                { "type": "cursorRestore" }
+                            ]
+                        }
+                    ],
                     "layerOrder": ["base", "shift"],
                     "globalSettings": {
                         "defaultHoldThresholdMs": 200,

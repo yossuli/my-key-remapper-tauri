@@ -68,6 +68,8 @@ interface KeyRemapSectionProps {
   setEditingKey: Dispatch<SetStateAction<number | null>>;
 }
 
+const EMPTY_TARGET_KEYS: number[] = [];
+
 export function KeyRemapSection({
   layerState,
   layerActions,
@@ -87,7 +89,7 @@ export function KeyRemapSection({
     useQuickRemap({
       enabled: isQuickEditMode,
       selectedLayerId: layerState.layerId,
-      targetKeys: [],
+      targetKeys: EMPTY_TARGET_KEYS,
       selectedTrigger,
       keyboardLayout,
       onSaveMapping: mappingActions.saveMapping,

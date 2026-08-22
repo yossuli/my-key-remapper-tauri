@@ -83,7 +83,8 @@ export function ActionItem({
           </span>
         );
       },
-      cursorReturn: (a) => `カーソル復帰: ((遅延 ${a.delayMs}ms))`,
+      cursorSave: () => "カーソル位置記憶",
+      cursorRestore: () => "カーソル位置復元",
       none: () => "((なし))",
     },
     action,

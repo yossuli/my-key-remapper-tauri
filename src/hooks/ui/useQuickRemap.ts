@@ -1,5 +1,5 @@
 import type { Action, TriggerType } from "@/types/remapConfig";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { UseLayerStateReturn } from "@/hooks/api/useLayerState";
 import { useKeyEventInput } from "@/hooks/ui/useKeyEventInput";
 import { useKeyEditorActions } from "@/hooks/useKeyEditorAction";
@@ -33,20 +33,30 @@ export function useQuickRemap({
   const [editingKey, setEditingKey] =
     useState<UseQuickRemapReturn["editingKey"]>(null);
 
+  const editorState = useMemo(
+    () => ({
+      actionType: "remap" as const,
+      targetKeys,
+    }),
+    [targetKeys]
+  );
+
+  const handleSaveMapping = useCallback(
+    (_trigger: TriggerType, action: Action) => {
+      if (editingKey !== null) {
+        onSaveMapping(editingKey, selectedTrigger)(action);
+      }
+    },
+    [editingKey, selectedTrigger, onSaveMapping]
+  );
+
   const { canSave, holds, addHoldKey, removeHoldKey, handleSave, reset } =
     useKeyEditorActions({
-      state: {
-        actionType: "remap",
-        targetKeys,
-      },
+      state: editorState,
       layerId: selectedLayerId,
       targetVk: editingKey,
       selectedTrigger,
-      onSave: (_trigger: TriggerType, action: Action) => {
-        if (editingKey !== null) {
-          onSaveMapping(editingKey, selectedTrigger)(action);
-        }
-      },
+      onSave: handleSaveMapping,
     });
 
   const startEditing = useCallback<UseQuickRemapReturn["startEditing"]>(

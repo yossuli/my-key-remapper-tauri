@@ -4,7 +4,7 @@ import {
   objectiveDiscriminantSwitch,
   objectiveMergeSwitch,
 } from "@/utils/objectiveSwitch";
-import { Keyboard, RotateCcw, Timer } from "lucide-react";
+import { Keyboard, Save, Timer, Undo } from "lucide-react";
 import { EditorSection } from "@/components/molecules/EditorSection";
 import { ActionNumericInput } from "@/components/molecules/forms/ActionNumericInput";
 import { ActionSelector } from "@/components/molecules/forms/ActionSelector";
@@ -14,8 +14,8 @@ import { useMacros } from "@/hooks/api/useMacros";
 import type { ActionSetters } from "@/hooks/ui/useBindingConfig";
 import {
   type BindingState,
-  type CursorReturnBindingState,
-  DEFAULT_CURSOR_RETURN_DELAY_MS,
+  type CursorRestoreBindingState,
+  type CursorSaveBindingState,
   DEFAULT_DELAY_MS,
   type DelayBindingState,
   getInitialStateForType,
@@ -90,8 +90,8 @@ export function ActionSettingsSection({
             s.mouseButton,
             s.clickCount
           ),
-        cursorReturn: (s: CursorReturnBindingState) =>
-          actionSetters.setCursorReturnAction(s.cursorReturnDelayMs),
+        cursorSave: () => actionSetters.setCursorSaveAction(),
+        cursorRestore: () => actionSetters.setCursorRestoreAction(),
         macro: (s: MacroBindingState) =>
           actionSetters.setMacroAction(s.macroId),
         delay: (s: DelayBindingState) =>
@@ -158,25 +158,19 @@ export function ActionSettingsSection({
               state={s}
             />
           ),
-          cursorReturn: (s) => (
+          cursorSave: () => (
             <EditorSection
-              description="キー押下時のカーソル位置を記録し、指定時間後に戻ります"
-              icon={RotateCcw}
-              title="カーソル復帰"
-            >
-              <ActionNumericInput
-                id="cursorReturnDelay"
-                label="遅延時間 (ms)"
-                onValueChange={(val) => {
-                  actionSetters.setCursorReturnAction(
-                    val ?? DEFAULT_CURSOR_RETURN_DELAY_MS
-                  );
-                }}
-                placeholder={String(DEFAULT_CURSOR_RETURN_DELAY_MS)}
-                setIsInputFocused={setIsInputFocused}
-                value={s.cursorReturnDelayMs}
-              />
-            </EditorSection>
+              description="現在のアクティブなカーソル位置を記録します"
+              icon={Save}
+              title="カーソル位置記憶"
+            />
+          ),
+          cursorRestore: () => (
+            <EditorSection
+              description="記録されたカーソル位置へ移動します"
+              icon={Undo}
+              title="カーソル位置復元"
+            />
           ),
           macro: (s) => (
             <MacroActionSettings
@@ -213,7 +207,8 @@ export function ActionSettingsSection({
           layerMomentary: "layerToggle-layerMomentary",
           mouseMove: "mouseMove",
           mouseClick: "mouseClick",
-          cursorReturn: "cursorReturn",
+          cursorSave: "cursorSave",
+          cursorRestore: "cursorRestore",
           delay: "delay",
           macro: "macro",
         }

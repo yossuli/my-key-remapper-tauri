@@ -9,7 +9,7 @@ interface EditorSectionProps {
   title?: string;
   icon?: LucideIcon;
   description?: string;
-  children: ReactNode;
+  children?: ReactNode;
   extra?: ReactNode;
 }
 

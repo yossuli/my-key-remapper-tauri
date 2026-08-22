@@ -94,7 +94,16 @@ pub fn apply_layer_modifiers(old_layers: &[String], new_layers: &[String], confi
     }
 }
 
-use windows::Win32::UI::WindowsAndMessaging::SetCursorPos;
+use windows::Win32::UI::WindowsAndMessaging::{SetCursorPos, GetCursorPos};
+use windows::Win32::Foundation::POINT;
+
+pub fn get_mouse_pos() -> (i32, i32) {
+    let mut pt = POINT { x: 0, y: 0 };
+    unsafe {
+        let _ = GetCursorPos(&mut pt);
+    }
+    (pt.x, pt.y)
+}
 
 pub fn send_mouse_move(x: i32, y: i32) {
     log::info!("send_mouse_move: x={}, y={}", x, y);

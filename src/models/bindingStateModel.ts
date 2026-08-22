@@ -37,9 +37,12 @@ export interface NoneBindingState {
   actionType: "none";
 }
 
-export interface CursorReturnBindingState {
-  actionType: "cursorReturn";
-  cursorReturnDelayMs: number;
+export interface CursorSaveBindingState {
+  actionType: "cursorSave";
+}
+
+export interface CursorRestoreBindingState {
+  actionType: "cursorRestore";
 }
 
 export interface DelayBindingState {
@@ -59,7 +62,8 @@ export type BindingState =
   | MouseMoveBindingState
   | MouseClickBindingState
   | NoneBindingState
-  | CursorReturnBindingState
+  | CursorSaveBindingState
+  | CursorRestoreBindingState
   | DelayBindingState
   | MacroBindingState;
 
@@ -97,10 +101,8 @@ export function actionToBindingState(action: Action): BindingState {
         clickCount: act.clickCount ?? 1,
       }),
       none: () => ({ actionType: "none" }),
-      cursorReturn: (act) => ({
-        actionType: "cursorReturn",
-        cursorReturnDelayMs: act.delayMs,
-      }),
+      cursorSave: () => ({ actionType: "cursorSave" }),
+      cursorRestore: () => ({ actionType: "cursorRestore" }),
       delay: (act) => ({
         actionType: "delay",
         delayActionMs: act.delayMs,
@@ -149,10 +151,8 @@ export function convertBindingStateToAction(state: BindingState): Action {
         x: s.mouseX,
         y: s.mouseY,
       }),
-      cursorReturn: (s) => ({
-        type: "cursorReturn",
-        delayMs: s.cursorReturnDelayMs,
-      }),
+      cursorSave: () => ({ type: "cursorSave" }),
+      cursorRestore: () => ({ type: "cursorRestore" }),
       delay: (s) => ({ type: "delay", delayMs: s.delayActionMs }),
       none: () => ({ type: "none" }),
     },
@@ -165,7 +165,6 @@ export function convertBindingStateToAction(state: BindingState): Action {
 export const DEFAULT_REPEAT_DELAY_MS = 500;
 export const DEFAULT_REPEAT_INTERVAL_MS = 100;
 export const DEFAULT_DELAY_MS = 500;
-export const DEFAULT_CURSOR_RETURN_DELAY_MS = 1000;
 export const DEFAULT_LAYER_ID = "base";
 export const DEFAULT_MOUSE_X = 0;
 export const DEFAULT_MOUSE_Y = 0;
@@ -207,11 +206,10 @@ export function getInitialStateForType(type: ActionType): BindingState {
         mouseButton: "left",
         clickCount: 1,
       };
-    case "cursorReturn":
-      return {
-        actionType: "cursorReturn",
-        cursorReturnDelayMs: DEFAULT_CURSOR_RETURN_DELAY_MS,
-      };
+    case "cursorSave":
+      return { actionType: "cursorSave" };
+    case "cursorRestore":
+      return { actionType: "cursorRestore" };
     case "delay":
       return {
         actionType: "delay",

@@ -13,6 +13,29 @@ pub fn apply_action(physical_vk: u16, action: &serde_json::Value, is_atomic: boo
         "layerToggle" => layer_toggle::apply(action, config),
         "layerMomentary" => layer_momentary::apply(physical_vk, action, config),
         "macro" => macro_action::apply(action, config),
+        "mouseMove" => {
+            let x = action.get("x").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            let y = action.get("y").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            crate::key_processor::utils::send_mouse_move(x, y);
+        }
+        "mouseClick" => {
+            let button = action.get("button").and_then(|v| v.as_str()).unwrap_or("left");
+            let click_count = action.get("clickCount").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
+            crate::key_processor::utils::send_mouse_click(button, click_count);
+        }
+        "cursorSave" => {
+            let pos = crate::key_processor::utils::get_mouse_pos();
+            crate::key_processor::state::get_state().lock().unwrap().saved_mouse_pos = Some(pos);
+            log::info!("cursorSave: saved pos ({}, {})", pos.0, pos.1);
+        }
+        "cursorRestore" => {
+            if let Some(pos) = crate::key_processor::state::get_state().lock().unwrap().saved_mouse_pos {
+                crate::key_processor::utils::send_mouse_move(pos.0, pos.1);
+                log::info!("cursorRestore: restored to ({}, {})", pos.0, pos.1);
+            } else {
+                log::warn!("cursorRestore called but no position was saved");
+            }
+        }
         _ => {
             log::warn!("Unhandled action type: {}", action_type);
         }
