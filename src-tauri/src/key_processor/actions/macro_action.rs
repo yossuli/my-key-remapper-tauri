@@ -69,12 +69,16 @@ fn execute_macro_sync(macro_id: &str, config: &Config, depth: u32) {
 }
 
 pub fn apply(action: &serde_json::Value, config: &Config) {
+    log::info!("macro_action::apply called with action: {:?}", action);
     if let Some(macro_id) = action.get("macroId").and_then(|v| v.as_str()) {
+        log::info!("Found macroId: {}", macro_id);
         let macro_id = macro_id.to_string();
         let config_clone = config.clone();
 
         thread::spawn(move || {
             execute_macro_sync(&macro_id, &config_clone, 1);
         });
+    } else {
+        log::warn!("macroId not found in action: {:?}", action);
     }
 }

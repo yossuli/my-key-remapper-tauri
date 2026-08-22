@@ -1,6 +1,6 @@
 import type { Action, Layer, TriggerType } from "@/types/remapConfig";
 import { ArrowRight } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/atoms/Button";
 import { Icon } from "@/components/atoms/Icon";
 import { Mapped } from "@/components/control/Mapped";
@@ -11,6 +11,8 @@ import { ActionSettingsSection } from "@/components/organisms/editor/ActionSetti
 import { TimingSettingsSection } from "@/components/organisms/editor/TimingSettingsSection";
 import { HStack, VStack } from "@/components/template/Flex";
 import { useBindingConfig } from "@/hooks/ui/useBindingConfig";
+import { useKeyHoldAction } from "@/hooks/ui/useKeyHoldAction";
+import { VK } from "@/constants/vk";
 import {
   type BindingState,
   createBindingStateFromAction,
@@ -123,8 +125,43 @@ export function UnifiedActionEditor({
     onRemove,
   });
 
+  // 🌟 エンター長押し保存ロジック 🌟
+  const { handleHoldKeyDown, handleHoldKeyUp } = useKeyHoldAction({
+    targetKey: VK.ENTER,
+    holdMs: 600, // UX的に600ms程度が適当
+  });
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (isInputFocused) return;
+    
+    // getVkCode の代わりに簡易的に e.keyCode を渡すか、VK.ENTER を期待するか
+    // ここでは key が Enter なら VK.ENTER を渡すようにする。
+    const vkCode = e.key === "Enter" ? VK.ENTER : e.keyCode;
+
+    handleHoldKeyDown(vkCode, {
+      onHold: () => {
+        console.log("[DEBUG] エンター長押し完了。モーダルを保存して閉じます。");
+        handleSave();
+      }
+    });
+  };
+
+  const onKeyUp = (e: React.KeyboardEvent) => {
+    if (isInputFocused) return;
+    const vkCode = e.key === "Enter" ? VK.ENTER : e.keyCode;
+    handleHoldKeyUp(vkCode, {});
+  };
+
   const handleTriggerChange = useCallback((trigger: TriggerType) => {
     setSelectedTrigger(trigger);
+  }, []);
+
+  const vstackRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (vstackRef.current) {
+      vstackRef.current.focus();
+    }
   }, []);
 
   useEffect(() => {
@@ -151,9 +188,13 @@ export function UnifiedActionEditor({
 
   return (
     <VStack
-      className={targetVk ? "px-6" : "h-full min-h-[400px] p-6"}
+      ref={vstackRef}
+      className={targetVk ? "px-6 focus:outline-none" : "h-full min-h-[400px] p-6 focus:outline-none"}
       // biome-ignore lint/style/noMagicNumbers: UIのgapは適切な値なので許容
       gap={targetVk ? 4 : 6}
+      tabIndex={0}
+      onKeyDown={onKeyDown}
+      onKeyUp={onKeyUp}
     >
       <Show condition={!!targetVk}>
         <div className="flex items-center justify-center gap-4 font-bold text-2xl">
@@ -226,7 +267,7 @@ export function UnifiedActionEditor({
         </Show>
         <Button
           disabled={actionType === "none"}
-          label={targetVk ? "保存" : "決定"}
+          label={targetVk ? "保存 (Enter長押し)" : "決定 (Enter長押し)"}
           onClick={handleSave}
           size="default"
           variant="default"

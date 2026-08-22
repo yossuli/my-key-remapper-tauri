@@ -1,4 +1,4 @@
-﻿// 保存・削除アクションのフック
+// 保存・削除アクションのフック
 
 import type { Action, TriggerType } from "@/types/remapConfig";
 import { useCallback, useMemo, useState } from "react";
@@ -51,11 +51,6 @@ export function useKeyEditorActions({
   // remap 型のみ targetKeys を持つため、型ガード付きで取得
   const targetKeys = state.actionType === "remap" ? state.targetKeys : [];
 
-  console.log("[DEBUG] useKeyEditorActions - render", {
-    actionType,
-    targetKeys,
-    selectedTrigger,
-  });
   // 下書き（ドラフト）状態
   const [keys, setKeys] = useState<number[]>(targetKeys);
   // キャプチャ中のキー（互換性用）

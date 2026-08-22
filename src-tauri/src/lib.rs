@@ -243,7 +243,13 @@ pub fn run() {
                         log::info!("Loaded macros from disk: {:?}", macros_path);
                     },
                     Err(e) => {
-                        log::error!("Failed to parse existing macros ({:?}): {}", macros_path, e);
+                        log::error!("Failed to parse existing macros as array ({:?}): {}. Trying as object.", macros_path, e);
+                        if let Ok(parsed_obj) = serde_json::from_str::<Value>(&json) {
+                            if let Some(macros_arr) = parsed_obj.get("macros").and_then(|v| v.as_array()) {
+                                loaded_macros = macros_arr.clone();
+                                log::info!("Loaded macros from disk (object format): {:?}", macros_path);
+                            }
+                        }
                     }
                 }
             }

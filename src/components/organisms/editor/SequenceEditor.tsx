@@ -26,15 +26,12 @@ export function SequenceEditor({
       onReorder={onChange}
       values={actions}
     >
-      <HandleEmpty
-        array={actions.map((a, i) => ({ ...a, id: a._uiId, _index: i }))}
-        empty={
-          <div className="py-8 text-center text-muted-foreground">
-            アクションがありません。下部ボタンから追加してください。
-          </div>
-        }
-      >
-        {(action) => (
+      {actions.length === 0 ? (
+        <div className="py-8 text-center text-muted-foreground">
+          アクションがありません。下部ボタンから追加してください。
+        </div>
+      ) : (
+        actions.map((action, index) => (
           <Reorder.Item
             className="flex select-none items-center gap-3 rounded-md border border-border bg-secondary/30 p-2 transition-colors has-[[data-action=edit]:hover]:bg-secondary"
             key={action._uiId}
@@ -43,13 +40,13 @@ export function SequenceEditor({
             <ActionItem
               action={action}
               actionSummaryHandlers={actionSummaryHandlers}
-              index={action._index}
-              onDelete={() => onDeleteAction(action._index)}
-              onEdit={() => onEditAction(action._index)}
+              index={index}
+              onDelete={() => onDeleteAction(index)}
+              onEdit={() => onEditAction(index)}
             />
           </Reorder.Item>
-        )}
-      </HandleEmpty>
+        ))
+      )}
     </Reorder.Group>
   );
 }

@@ -1,5 +1,3 @@
-// 指定キーの長押しでアクションを実行するロジックのフック
-
 import { useCallback, useRef } from "react";
 
 export interface UseKeyHoldActionProps {
@@ -54,6 +52,7 @@ export function useKeyHoldAction({
   const timerRef = useRef<number | null>(null);
   const keyActiveRef = useRef(false);
   const actionReadyRef = useRef(false);
+  const callbacksRef = useRef<KeyDownCallbacks | null>(null);
 
   const clearTimer = useCallback<UseKeyHoldActionReturn["clearTimer"]>(() => {
     if (timerRef.current !== null) {
@@ -81,16 +80,17 @@ export function useKeyHoldAction({
     UseKeyHoldActionReturn["handleHoldKeyDown"]
   >(
     (e, callbacks) => {
-      // 対象キー以外ならコールバック呼び出しして終了
+      callbacksRef.current = callbacks || null;
+
+      // 対象キー以外ならタイマーをキャンセルして終了（割り込み処理）
       if (e !== targetKey) {
+        clearTimer();
         callbacks?.onOtherKeyDown?.(e);
         return;
       }
 
-      // アクション準備完了状態なら onTargetKey を呼び出し
+      // 既に発火済みなら OS のキーリピート入力なので無視する
       if (actionReadyRef.current) {
-        callbacks?.onHold?.();
-        clearTimer();
         return;
       }
 
@@ -99,7 +99,8 @@ export function useKeyHoldAction({
         keyActiveRef.current = true;
         timerRef.current = window.setTimeout(() => {
           actionReadyRef.current = true;
-          keyActiveRef.current = false;
+          // タイマー満了の瞬間にアクションを実行する
+          callbacksRef.current?.onHold?.();
         }, holdMs);
       }
     },
@@ -116,10 +117,9 @@ export function useKeyHoldAction({
         return;
       }
 
-      // アクション準備完了状態なら長押し完了
+      // アクション準備完了（長押し発火済み）の場合、タイマー等のリセットのみ行う
       if (actionReadyRef.current) {
         clearTimer();
-        callbacks.onHold?.();
         return;
       }
 
