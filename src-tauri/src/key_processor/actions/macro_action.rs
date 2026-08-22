@@ -2,6 +2,28 @@ use crate::Config;
 use std::thread;
 use std::time::Duration;
 use crate::key_processor::utils::{send_key_down, send_key_up};
+use std::sync::mpsc::{channel, Sender};
+use std::sync::{OnceLock, Mutex};
+
+pub struct MacroTask {
+    pub macro_id: String,
+    pub config: Config,
+}
+
+pub fn get_macro_sender() -> Sender<MacroTask> {
+    static SENDER: OnceLock<Mutex<Sender<MacroTask>>> = OnceLock::new();
+    SENDER.get_or_init(|| {
+        let (tx, rx) = channel::<MacroTask>();
+        thread::spawn(move || {
+            while let Ok(task) = rx.recv() {
+                crate::hook::MACRO_EXECUTING.store(true, std::sync::atomic::Ordering::SeqCst);
+                execute_macro_sync(&task.macro_id, &task.config, 1);
+                crate::hook::MACRO_EXECUTING.store(false, std::sync::atomic::Ordering::SeqCst);
+            }
+        });
+        Mutex::new(tx)
+    }).lock().unwrap().clone()
+}
 
 fn execute_macro_sync(macro_id: &str, config: &Config, depth: u32) {
     if depth > 10 {
@@ -83,11 +105,9 @@ pub fn apply(action: &serde_json::Value, config: &Config) {
     log::info!("macro_action::apply called with action: {:?}", action);
     if let Some(macro_id) = action.get("macroId").and_then(|v| v.as_str()) {
         log::info!("Found macroId: {}", macro_id);
-        let macro_id = macro_id.to_string();
-        let config_clone = config.clone();
-
-        thread::spawn(move || {
-            execute_macro_sync(&macro_id, &config_clone, 1);
+        let _ = get_macro_sender().send(MacroTask {
+            macro_id: macro_id.to_string(),
+            config: config.clone(),
         });
     } else {
         log::warn!("macroId not found in action: {:?}", action);

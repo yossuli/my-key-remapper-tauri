@@ -108,8 +108,27 @@ pub fn get_mouse_pos() -> (i32, i32) {
 pub fn send_mouse_move(x: i32, y: i32) {
     log::info!("send_mouse_move: x={}, y={}", x, y);
     unsafe {
-        let result = SetCursorPos(x, y);
-        log::info!("SetCursorPos result: {:?}", result);
+        let screen_width = windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics(windows::Win32::UI::WindowsAndMessaging::SM_CXSCREEN);
+        let screen_height = windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics(windows::Win32::UI::WindowsAndMessaging::SM_CYSCREEN);
+        
+        let nx = (x as f64 * 65535.0 / (screen_width - 1) as f64).round() as i32;
+        let ny = (y as f64 * 65535.0 / (screen_height - 1) as f64).round() as i32;
+
+        let input = INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT { 
+                    dx: nx, 
+                    dy: ny, 
+                    mouseData: 0, 
+                    dwFlags: MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE, 
+                    time: 0, 
+                    dwExtraInfo: 0 
+                },
+            },
+        };
+        let result = SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
+        log::info!("SendInput (mouse move) result: {:?}", result);
     }
 }
 

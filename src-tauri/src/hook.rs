@@ -14,6 +14,7 @@ use std::sync::atomic::AtomicBool;
 static HOOK_HANDLE: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 pub static REMAP_ENABLED: AtomicBool = AtomicBool::new(false);
+pub static MACRO_EXECUTING: AtomicBool = AtomicBool::new(false);
 
 pub fn setup_hook(app: AppHandle) {
     let _ = APP_HANDLE.set(app.clone());
@@ -57,6 +58,10 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
         let is_injected = (flags & 0x10) != 0; // LLKHF_INJECTED
 
         if (is_down || is_up) && !is_injected {
+            if MACRO_EXECUTING.load(Ordering::SeqCst) {
+                return windows::Win32::Foundation::LRESULT(1);
+            }
+
             if let Some(app) = APP_HANDLE.get() {
                 // FEへの通知 (非同期で実行してメインスレッドのメッセージループをブロックしないようにする)
                 let app_clone = app.clone();
