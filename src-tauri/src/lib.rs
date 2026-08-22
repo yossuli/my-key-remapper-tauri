@@ -20,6 +20,8 @@ pub struct Binding {
     pub action: Value,
     #[serde(rename = "timingMs", skip_serializing_if = "Option::is_none")]
     pub timing_ms: Option<u32>,
+    #[serde(rename = "interruptBehavior", skip_serializing_if = "Option::is_none")]
+    pub interrupt_behavior: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

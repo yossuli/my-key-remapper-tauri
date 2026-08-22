@@ -21,7 +21,7 @@ export interface UseLayerStateReturn {
     selectedTrigger: TriggerType
   ) => (
     action: Action,
-    timing?: Record<string, number | undefined>,
+    timing?: { hold?: number; doubleTap?: number; interruptBehavior?: "forceTap" | "ignore" },
     activeTrigger?: TriggerType
   ) => void;
   removeMapping: (from: number, trigger: TriggerType) => void;
@@ -96,12 +96,14 @@ export function useLayerState(): UseLayerStateReturn {
       // triggerに応じたtimingMsを決定
       const trigger = activeTrigger || selectedTrigger;
       const timingMs =
-        trigger === "hold" || trigger === "doubleTap" ? timing : undefined;
+        trigger === "hold" || trigger === "doubleTap" ? (timing as any)?.[trigger] : undefined;
+      const interruptBehavior =
+        trigger === "hold" ? (timing as any)?.interruptBehavior : undefined;
 
       send("save-key-config", {
         layerId,
         from,
-        binding: { trigger, action, timingMs: timingMs?.[trigger] },
+        binding: { trigger, action, timingMs, interruptBehavior },
       });
       // 楽観的更新
       setLayers(upsert(layerId, from, trigger, action));

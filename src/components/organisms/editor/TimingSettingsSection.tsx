@@ -1,32 +1,37 @@
 import type { TriggerType } from "@/types/remapConfig";
 import { TimingInput } from "@/components/molecules/forms/TimingInput";
 import { TabsContent } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface TimingSettingsSectionProps {
   selectedTrigger: TriggerType;
   holdThresholdMs: number | undefined;
   tapIntervalMs: number | undefined;
+  interruptBehavior?: "forceTap" | "ignore";
   defaultHoldThresholdMs: number | undefined;
   defaultTapIntervalMs: number | undefined;
   setHoldThresholdMs: (ms: number | undefined) => void;
   setTapIntervalMs: (ms: number | undefined) => void;
+  setInterruptBehavior: (behavior: "forceTap" | "ignore" | undefined) => void;
   setIsInputFocused: (focused: boolean) => void;
 }
 
-// SelectTriggerは構造上必要だが関数内では未使用
 export function TimingSettingsSection({
-  selectedTrigger: _selectedTrigger, // KeyEditorForm から受け取り（構造上必要だが未使用）
-  holdThresholdMs, // KeyEditorForm から受け取り
-  tapIntervalMs, // KeyEditorForm から受け取り
-  defaultHoldThresholdMs, // KeyEditorForm から受け取り
-  defaultTapIntervalMs, // KeyEditorForm から受け取り
-  setHoldThresholdMs, // KeyEditorForm から受け取り
-  setTapIntervalMs, // KeyEditorForm から受け取り
-  setIsInputFocused, // KeyEditorForm から受け取り
+  selectedTrigger: _selectedTrigger,
+  holdThresholdMs,
+  tapIntervalMs,
+  interruptBehavior,
+  defaultHoldThresholdMs,
+  defaultTapIntervalMs,
+  setHoldThresholdMs,
+  setTapIntervalMs,
+  setInterruptBehavior,
+  setIsInputFocused,
 }: TimingSettingsSectionProps) {
   return (
     <>
-      <TabsContent value="hold">
+      <TabsContent value="hold" className="space-y-4">
         <TimingInput
           defaultValue={defaultHoldThresholdMs}
           id="holdThreshold"
@@ -35,6 +40,22 @@ export function TimingSettingsSection({
           setFocused={setIsInputFocused}
           value={holdThresholdMs}
         />
+        <div className="grid gap-2">
+          <Label>Hold待機中の他キー入力割り込み</Label>
+          <Select
+            value={interruptBehavior || "forceTap"}
+            onValueChange={(val) => setInterruptBehavior(val as "forceTap" | "ignore")}
+            onOpenChange={setIsInputFocused}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="挙動を選択" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="forceTap">Tapとして発火 (文字キー向け)</SelectItem>
+              <SelectItem value="ignore">判定保留 (修飾キー向け)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </TabsContent>
 
       <TabsContent value="doubleTap">

@@ -35,6 +35,12 @@ pub enum ActionCommand {
     ReleaseDoubleTap, // DoubleTapを離す
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InterruptBehavior {
+    ForceTap,
+    Ignore,
+}
+
 /// ステートマシンの状態遷移関数
 /// 純粋関数として実装し、副作用を持たない
 pub fn transition(
@@ -42,6 +48,7 @@ pub fn transition(
     event: TriggerEvent,
     has_hold: bool,
     has_double_tap: bool,
+    interrupt_behavior: InterruptBehavior,
     now: Instant,
 ) -> (KeyState, ActionCommand) {
     match (state, event) {
@@ -68,7 +75,10 @@ pub fn transition(
             }
         }
         (KeyState::WaitingForHold { .. }, TriggerEvent::OtherKeyPressed) => {
-            (KeyState::TapActive { activated_at: now, last_repeated_at: now }, ActionCommand::ExecuteTap)
+            match interrupt_behavior {
+                InterruptBehavior::ForceTap => (KeyState::TapActive { activated_at: now, last_repeated_at: now }, ActionCommand::ExecuteTap),
+                InterruptBehavior::Ignore => (state, ActionCommand::None),
+            }
         }
         (KeyState::WaitingForHold { .. }, TriggerEvent::Released) => {
             if has_double_tap {
@@ -132,69 +142,78 @@ mod tests {
 
     #[test]
     fn test_simple_tap_only() {
-        let (s1, a1) = transition(KeyState::Idle, TriggerEvent::Pressed, false, false, Instant::now());
+        let (s1, a1) = transition(KeyState::Idle, TriggerEvent::Pressed, false, false, InterruptBehavior::ForceTap, Instant::now());
         assert!(matches!(s1, KeyState::TapActive { .. }));
         assert_eq!(a1, ActionCommand::ExecuteTap);
 
-        let (s2, a2) = transition(s1, TriggerEvent::Released, false, false, Instant::now());
+        let (s2, a2) = transition(s1, TriggerEvent::Released, false, false, InterruptBehavior::ForceTap, Instant::now());
         assert_eq!(s2, KeyState::Idle);
         assert_eq!(a2, ActionCommand::ReleaseTap);
     }
 
     #[test]
     fn test_hold_success() {
-        let (s1, a1) = transition(KeyState::Idle, TriggerEvent::Pressed, true, false, Instant::now());
+        let (s1, a1) = transition(KeyState::Idle, TriggerEvent::Pressed, true, false, InterruptBehavior::ForceTap, Instant::now());
         assert!(matches!(s1, KeyState::WaitingForHold { .. }));
         assert_eq!(a1, ActionCommand::None);
 
-        let (s2, a2) = transition(s1, TriggerEvent::Timeout, true, false, Instant::now());
+        let (s2, a2) = transition(s1, TriggerEvent::Timeout, true, false, InterruptBehavior::ForceTap, Instant::now());
         assert!(matches!(s2, KeyState::HoldActive { .. }));
         assert_eq!(a2, ActionCommand::ExecuteHold);
 
-        let (s3, a3) = transition(s2, TriggerEvent::Released, true, false, Instant::now());
+        let (s3, a3) = transition(s2, TriggerEvent::Released, true, false, InterruptBehavior::ForceTap, Instant::now());
         assert_eq!(s3, KeyState::Idle);
         assert_eq!(a3, ActionCommand::ReleaseHold);
     }
 
     #[test]
-    fn test_hold_interrupted() {
-        let (s1, _) = transition(KeyState::Idle, TriggerEvent::Pressed, true, false, Instant::now());
-
-        let (s2, a2) = transition(s1, TriggerEvent::OtherKeyPressed, true, false, Instant::now());
+    fn test_hold_interrupted_force_tap() {
+        let (s1, _) = transition(KeyState::Idle, TriggerEvent::Pressed, true, false, InterruptBehavior::ForceTap, Instant::now());
+        let (s2, a2) = transition(s1, TriggerEvent::OtherKeyPressed, true, false, InterruptBehavior::ForceTap, Instant::now());
         assert!(matches!(s2, KeyState::TapActive { .. }));
         assert_eq!(a2, ActionCommand::ExecuteTap);
     }
 
     #[test]
-    fn test_hold_released_early() {
-        let (s1, _) = transition(KeyState::Idle, TriggerEvent::Pressed, true, false, Instant::now());
+    fn test_hold_interrupted_ignore() {
+        let (s1, _) = transition(KeyState::Idle, TriggerEvent::Pressed, true, false, InterruptBehavior::Ignore, Instant::now());
+        let (s2, a2) = transition(s1, TriggerEvent::OtherKeyPressed, true, false, InterruptBehavior::Ignore, Instant::now());
+        assert!(matches!(s2, KeyState::WaitingForHold { .. }));
+        assert_eq!(a2, ActionCommand::None);
+    }
 
-        let (s2, a2) = transition(s1, TriggerEvent::Released, true, false, Instant::now());
+    #[test]
+    fn test_hold_released_early() {
+        let (s1, a1) = transition(KeyState::Idle, TriggerEvent::Pressed, true, false, InterruptBehavior::ForceTap, Instant::now());
+        assert!(matches!(s1, KeyState::WaitingForHold { .. }));
+        assert_eq!(a1, ActionCommand::None);
+
+        let (s2, a2) = transition(s1, TriggerEvent::Released, true, false, InterruptBehavior::ForceTap, Instant::now());
         assert_eq!(s2, KeyState::Idle);
         assert_eq!(a2, ActionCommand::ExecuteTapAtomic);
     }
 
     #[test]
     fn test_double_tap_success() {
-        let (s1, a1) = transition(KeyState::Idle, TriggerEvent::Pressed, false, true, Instant::now());
-        assert!(matches!(s1, KeyState::WaitingForHold { .. }));
-        assert_eq!(a1, ActionCommand::None);
-
-        let (s2, a2) = transition(s1, TriggerEvent::Released, false, true, Instant::now());
+        let (s1, _) = transition(KeyState::Idle, TriggerEvent::Pressed, false, true, InterruptBehavior::ForceTap, Instant::now());
+        let (s2, _) = transition(s1, TriggerEvent::Released, false, true, InterruptBehavior::ForceTap, Instant::now());
         assert!(matches!(s2, KeyState::WaitingForDoubleTap { .. }));
-        assert_eq!(a2, ActionCommand::None);
 
-        let (s3, a3) = transition(s2, TriggerEvent::Pressed, false, true, Instant::now());
+        let (s3, a3) = transition(s2, TriggerEvent::Pressed, false, true, InterruptBehavior::ForceTap, Instant::now());
         assert!(matches!(s3, KeyState::DoubleTapActive { .. }));
         assert_eq!(a3, ActionCommand::ExecuteDoubleTap);
+
+        let (s4, a4) = transition(s3, TriggerEvent::Released, false, true, InterruptBehavior::ForceTap, Instant::now());
+        assert_eq!(s4, KeyState::Idle);
+        assert_eq!(a4, ActionCommand::ReleaseDoubleTap);
     }
 
     #[test]
     fn test_double_tap_timeout() {
-        let (s1, _) = transition(KeyState::Idle, TriggerEvent::Pressed, false, true, Instant::now());
-        let (s2, _) = transition(s1, TriggerEvent::Released, false, true, Instant::now());
-
-        let (s3, a3) = transition(s2, TriggerEvent::Timeout, false, true, Instant::now());
+        let (s1, _) = transition(KeyState::Idle, TriggerEvent::Pressed, false, true, InterruptBehavior::ForceTap, Instant::now());
+        let (s2, _) = transition(s1, TriggerEvent::Released, false, true, InterruptBehavior::ForceTap, Instant::now());
+        
+        let (s3, a3) = transition(s2, TriggerEvent::Timeout, false, true, InterruptBehavior::ForceTap, Instant::now());
         assert_eq!(s3, KeyState::Idle);
         assert_eq!(a3, ActionCommand::ExecuteTapAtomic);
     }

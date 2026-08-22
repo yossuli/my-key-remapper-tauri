@@ -53,6 +53,7 @@ export interface UseBindingConfigReturn {
   existingTiming: {
     holdThresholdMs: number | undefined;
     tapIntervalMs: number | undefined;
+    interruptBehavior: "forceTap" | "ignore" | undefined;
   };
 }
 
@@ -75,7 +76,8 @@ export function useBindingConfig({
   const [existingTiming, setExistingTiming] = useState<{
     holdThresholdMs: number | undefined;
     tapIntervalMs: number | undefined;
-  }>({ holdThresholdMs: undefined, tapIntervalMs: undefined });
+    interruptBehavior: "forceTap" | "ignore" | undefined;
+  }>({ holdThresholdMs: undefined, tapIntervalMs: undefined, interruptBehavior: undefined });
 
   const loadBinding = useCallback<UseBindingConfigReturn["loadBinding"]>(
     async (t) => {
@@ -97,6 +99,12 @@ export function useBindingConfig({
         if (binding) {
           const partial = actionToBindingState(binding.action);
           setState(partial);
+          setExistingTiming((prev) => ({
+            ...prev,
+            holdThresholdMs: t === "hold" ? binding.timingMs : prev.holdThresholdMs,
+            tapIntervalMs: t === "doubleTap" ? binding.timingMs : prev.tapIntervalMs,
+            interruptBehavior: t === "hold" ? binding.interruptBehavior : prev.interruptBehavior,
+          }));
         } else {
           setState(createInitialBindingState());
         }
@@ -107,10 +115,14 @@ export function useBindingConfig({
         const doubleTapTiming = bindings?.find(
           (b) => b.trigger === "doubleTap"
         )?.timingMs;
+        const interruptBehavior = bindings?.find(
+          (b) => b.trigger === "hold"
+        )?.interruptBehavior;
 
         setExistingTiming({
           holdThresholdMs: holdTiming,
           tapIntervalMs: doubleTapTiming,
+          interruptBehavior: interruptBehavior,
         });
       } catch (err) {
         console.error("Failed to load binding config:", err);

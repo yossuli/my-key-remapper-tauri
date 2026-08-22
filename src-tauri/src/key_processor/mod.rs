@@ -146,6 +146,21 @@ impl KeyProcessor {
             }
         }
     }
+    fn get_interrupt_behavior(vk_code: u16, config: &Config, active_layers: &[String]) -> crate::state_machine::InterruptBehavior {
+        if let Some(bindings) = Self::get_bindings(vk_code, config, active_layers) {
+            for b in bindings {
+                if b.trigger == "hold" {
+                    if let Some(behavior) = &b.interrupt_behavior {
+                        if behavior == "ignore" {
+                            return crate::state_machine::InterruptBehavior::Ignore;
+                        }
+                    }
+                }
+            }
+        }
+        crate::state_machine::InterruptBehavior::ForceTap
+    }
+
 
     pub fn process_key(vk_code: u16, is_down: bool, config: &Config) -> HookAction {
         let mut state_guard = get_state().lock().unwrap();
@@ -161,6 +176,7 @@ impl KeyProcessor {
                         TriggerEvent::OtherKeyPressed,
                         has_hold,
                         has_double_tap,
+                        Self::get_interrupt_behavior(other_vk, config, &active_layers),
                         Instant::now(),
                     );
                     *other_state = new_state;
@@ -215,7 +231,8 @@ impl KeyProcessor {
             TriggerEvent::Released
         };
 
-        let (new_state, cmd) = transition(current_state, event, has_hold, has_double_tap, Instant::now());
+        let interrupt_behavior = Self::get_interrupt_behavior(vk_code, config, &state_guard.active_layers);
+        let (new_state, cmd) = transition(current_state, event, has_hold, has_double_tap, interrupt_behavior, Instant::now());
         log::debug!("DEBUG[transition]: vk={} event={:?} state {:?} -> {:?} (cmd: {:?})", vk_code, event, current_state, new_state, cmd);
 
         if new_state == KeyState::Idle {
@@ -285,11 +302,13 @@ impl KeyProcessor {
                         if now >= target_time {
                             let (has_hold, has_double_tap) = Self::has_triggers(vk, &config, &active_layers);
                             let event = if is_custom_repeat { TriggerEvent::CustomRepeat } else { TriggerEvent::Timeout };
+                            let interrupt_behavior = Self::get_interrupt_behavior(vk, &config, &active_layers);
                             let (new_state, cmd) = transition(
                                 *key_state,
                                 event,
                                 has_hold,
                                 has_double_tap,
+                                interrupt_behavior,
                                 now,
                             );
                             if event == TriggerEvent::Timeout {

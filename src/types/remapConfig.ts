@@ -135,12 +135,13 @@ export interface MacroDef {
 // キーバインディング
 // =====================================
 
-/** キーバインディング：１つのトリガーに対する1つのアクション */
 export interface KeyBinding {
   trigger: TriggerType;
   action: Action;
   /** タイミング設定(ms)。Triggerに応じて意味が変わる。 hold=長押し判定時間、doubleTap=タップ間隔 */
   timingMs?: number;
+  /** 割り込み時の挙動（Hold中など）。デフォルトは forceTap */
+  interruptBehavior?: "forceTap" | "ignore";
 }
 
 // =====================================

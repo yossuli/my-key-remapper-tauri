@@ -39,7 +39,7 @@ export interface UnifiedActionEditorProps {
   // ハンドラー
   onSave: (
     action: Action,
-    timing?: { hold?: number; doubleTap?: number },
+    timing?: { hold?: number; doubleTap?: number; interruptBehavior?: "forceTap" | "ignore" },
     trigger?: TriggerType
   ) => void;
   handleEditorClose: () => void;
@@ -50,6 +50,7 @@ export interface UnifiedActionEditorProps {
   existingTiming?: {
     holdThresholdMs?: number;
     tapIntervalMs?: number;
+    interruptBehavior?: "forceTap" | "ignore";
   };
 }
 
@@ -87,11 +88,14 @@ export function UnifiedActionEditor({
   const [localTapIntervalMs, setLocalTapIntervalMs] = useState<
     number | undefined
   >(undefined);
+  const [localInterruptBehavior, setLocalInterruptBehavior] = useState<
+    "forceTap" | "ignore" | undefined
+  >(undefined);
 
   const handleSaveInternal = useCallback(
     (action: Action) => {
       const timing = targetVk
-        ? { hold: localHoldThresholdMs, doubleTap: localTapIntervalMs }
+        ? { hold: localHoldThresholdMs, doubleTap: localTapIntervalMs, interruptBehavior: localInterruptBehavior }
         : undefined;
       onSave(action, timing, selectedTrigger);
       handleEditorClose?.();
@@ -100,6 +104,7 @@ export function UnifiedActionEditor({
       targetVk,
       localHoldThresholdMs,
       localTapIntervalMs,
+      localInterruptBehavior,
       onSave,
       selectedTrigger,
       handleEditorClose,
@@ -171,6 +176,9 @@ export function UnifiedActionEditor({
     setLocalTapIntervalMs(
       fetchedTiming.tapIntervalMs ?? existingTimingProp?.tapIntervalMs
     );
+    setLocalInterruptBehavior(
+      fetchedTiming.interruptBehavior ?? existingTimingProp?.interruptBehavior
+    );
   }, [fetchedTiming, existingTimingProp]);
 
   const targetKeys = state.actionType === "remap" ? state.targetKeys : null;
@@ -239,11 +247,13 @@ export function UnifiedActionEditor({
           defaultHoldThresholdMs={200}
           defaultTapIntervalMs={300}
           holdThresholdMs={localHoldThresholdMs}
+          tapIntervalMs={localTapIntervalMs}
+          interruptBehavior={localInterruptBehavior}
           selectedTrigger={selectedTrigger}
           setHoldThresholdMs={setLocalHoldThresholdMs}
-          setIsInputFocused={setIsInputFocused}
           setTapIntervalMs={setLocalTapIntervalMs}
-          tapIntervalMs={localTapIntervalMs}
+          setInterruptBehavior={setLocalInterruptBehavior}
+          setIsInputFocused={setIsInputFocused}
         />
       </TriggerTabs>
       <HStack
