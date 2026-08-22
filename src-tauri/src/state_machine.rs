@@ -68,7 +68,7 @@ pub fn transition(
             }
         }
         (KeyState::WaitingForHold { .. }, TriggerEvent::OtherKeyPressed) => {
-            (KeyState::TapActive { activated_at: now, last_repeated_at: now }, ActionCommand::ExecuteTap)
+            (state, ActionCommand::None)
         }
         (KeyState::WaitingForHold { .. }, TriggerEvent::Released) => {
             if has_double_tap {
@@ -162,18 +162,10 @@ mod tests {
 
     #[test]
     fn test_hold_interrupted() {
-        // Holdがある場合
         let (s1, _) = transition(KeyState::Idle, TriggerEvent::Pressed, true, false, Instant::now());
-
-        // タイムアウト前に他のキーが押されたら、即座にHold確定 (Pattern A)
         let (s2, a2) = transition(s1, TriggerEvent::OtherKeyPressed, true, false, Instant::now());
-        // OtherKeyPressed should result in TapActive according to spec
-        if let KeyState::TapActive { .. } = s2 {
-            // ok
-        } else {
-            panic!("Expected TapActive, got {:?}", s2);
-        }
-        assert_eq!(a2, ActionCommand::ExecuteTap);
+        assert!(matches!(s2, KeyState::WaitingForHold { .. }));
+        assert_eq!(a2, ActionCommand::None);
     }
 
     #[test]
