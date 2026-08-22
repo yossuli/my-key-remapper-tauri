@@ -1,13 +1,13 @@
-# Windows Key Remapper (Electron + TypeScript)
+# Windows Key Remapper (Tauri + Rust + React)
 
-Windows 用の高度なキーボードリマップアプリケーションです。`User32.dll` の API を直接利用したグローバルキーフック（`WH_KEYBOARD_LL`）により、OS レベルでの柔軟なキーカスタマイズを実現しています。
+Windows 用の高度なキーボードリマップアプリケーションです。RustとWindows API（`User32.dll`）を直接利用したグローバルキーフック（`WH_KEYBOARD_LL`）により、OS レベルでの柔軟なキーカスタマイズを実現しています。バックエンドにはTauri v2を採用し、高速かつ低メモリ消費で動作します。
 
 ## 開発状況 (Development Status)
 
 現在、**Feature-rich Beta** 段階です。基本的なリマップに加え、レイヤー、マクロ、マウス自動化などの実用的な機能が実装されています。
 
-- [x] Electron + TypeScript + Vite プロジェクト基盤
-- [x] `koffi` (FFI) による低レイヤーグローバルキーフック
+- [x] Tauri v2 (Rust) + React 19 + Vite プロジェクト基盤
+- [x] Rustによる低レイヤーグローバルキーフック
 - [x] 高度なリマップエンジン（レイヤー、マルチトリガー対応）
 - [x] シーケンシャルマクロ（キーシーケンス、ディレイ、マウス操作）
 - [x] モダンな UI エディタ（React + Framer Motion + Shadcn/UI）
@@ -24,12 +24,10 @@ Windows 用の高度なキーボードリマップアプリケーションです
 
 ## 技術スタック (Tech Stack)
 
-- **Runtime**: [Electron](https://www.electronjs.org/)
-- **Frontend**: [React](https://react.dev/), [Vite](https://vitejs.dev/)
-- **Styling**: [Tailwind CSS](https://tailwindcss.com/), [Shadcn/UI](https://ui.shadcn.com/)
+- **Backend**: [Tauri v2](https://v2.tauri.app/), [Rust](https://www.rust-lang.org/)
+- **Frontend**: [React 19](https://react.dev/), [Vite](https://vitejs.dev/)
+- **Styling**: [Tailwind CSS 4.x](https://tailwindcss.com/), [Shadcn/UI](https://ui.shadcn.com/)
 - **Animation**: [Framer Motion](https://www.framer.com/motion/)
-- **FFI**: [Koffi](https://koffi.dev/) (Native API Calling)
-- **Code Quality**: [Ultracite](https://github.com/ultracite-js/ultracite) (Biome-based linter/formatter)
 
 ## クイックスタート
 
@@ -37,6 +35,7 @@ Windows 用の高度なキーボードリマップアプリケーションです
 
 - Windows 10/11
 - Node.js (v20+)
+- Rust (Cargo)
 
 ### セットアップ
 
@@ -47,16 +46,16 @@ npm install
 ### 開発モード起動
 
 ```powershell
-npm run dev
+npm run tauri dev
 ```
 
 ### ビルド
 
 ```powershell
-npm run build:win
+npm run tauri build
 ```
 
-`dist/win-unpacked/WindowsKeyRemapper.exe` が生成されます。
+`src-tauri/target/release/app.exe` が生成されます。
 
 ## 設定データの保存場所
 
