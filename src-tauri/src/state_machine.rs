@@ -132,9 +132,8 @@ mod tests {
 
     #[test]
     fn test_simple_tap_only() {
-        // HoldもDoubleTapもない場合、即座にTapActiveになる
         let (s1, a1) = transition(KeyState::Idle, TriggerEvent::Pressed, false, false, Instant::now());
-        assert_eq!(s1, KeyState::TapActive);
+        assert!(matches!(s1, KeyState::TapActive { .. }));
         assert_eq!(a1, ActionCommand::ExecuteTap);
 
         let (s2, a2) = transition(s1, TriggerEvent::Released, false, false, Instant::now());
@@ -144,17 +143,14 @@ mod tests {
 
     #[test]
     fn test_hold_success() {
-        // Holdがある場合、まずは待機
         let (s1, a1) = transition(KeyState::Idle, TriggerEvent::Pressed, true, false, Instant::now());
         assert!(matches!(s1, KeyState::WaitingForHold { .. }));
         assert_eq!(a1, ActionCommand::None);
 
-        // タイムアウトでHold確定
         let (s2, a2) = transition(s1, TriggerEvent::Timeout, true, false, Instant::now());
-        assert_eq!(s2, KeyState::HoldActive);
+        assert!(matches!(s2, KeyState::HoldActive { .. }));
         assert_eq!(a2, ActionCommand::ExecuteHold);
 
-        // 離すとHold解除
         let (s3, a3) = transition(s2, TriggerEvent::Released, true, false, Instant::now());
         assert_eq!(s3, KeyState::Idle);
         assert_eq!(a3, ActionCommand::ReleaseHold);
@@ -162,26 +158,17 @@ mod tests {
 
     #[test]
     fn test_hold_interrupted() {
-        // Holdがある場合
         let (s1, _) = transition(KeyState::Idle, TriggerEvent::Pressed, true, false, Instant::now());
 
-        // タイムアウト前に他のキーが押されたら、即座にHold確定 (Pattern A)
         let (s2, a2) = transition(s1, TriggerEvent::OtherKeyPressed, true, false, Instant::now());
-        // OtherKeyPressed should result in TapActive according to spec
-        if let KeyState::TapActive { .. } = s2 {
-            // ok
-        } else {
-            panic!("Expected TapActive, got {:?}", s2);
-        }
+        assert!(matches!(s2, KeyState::TapActive { .. }));
         assert_eq!(a2, ActionCommand::ExecuteTap);
     }
 
     #[test]
     fn test_hold_released_early() {
-        // Holdのみある場合
         let (s1, _) = transition(KeyState::Idle, TriggerEvent::Pressed, true, false, Instant::now());
 
-        // タイムアウト前に離されたら、Tapアクションを発動してIdleに戻る
         let (s2, a2) = transition(s1, TriggerEvent::Released, true, false, Instant::now());
         assert_eq!(s2, KeyState::Idle);
         assert_eq!(a2, ActionCommand::ExecuteTapAtomic);
@@ -189,29 +176,24 @@ mod tests {
 
     #[test]
     fn test_double_tap_success() {
-        // Holdなし、DoubleTapあり
         let (s1, a1) = transition(KeyState::Idle, TriggerEvent::Pressed, false, true, Instant::now());
         assert!(matches!(s1, KeyState::WaitingForHold { .. }));
         assert_eq!(a1, ActionCommand::None);
 
-        // 1回目のリリースでDoubleTap待機
         let (s2, a2) = transition(s1, TriggerEvent::Released, false, true, Instant::now());
         assert!(matches!(s2, KeyState::WaitingForDoubleTap { .. }));
         assert_eq!(a2, ActionCommand::None);
 
-        // 待機中に再度押されたらDoubleTap確定
         let (s3, a3) = transition(s2, TriggerEvent::Pressed, false, true, Instant::now());
-        assert_eq!(s3, KeyState::DoubleTapActive);
+        assert!(matches!(s3, KeyState::DoubleTapActive { .. }));
         assert_eq!(a3, ActionCommand::ExecuteDoubleTap);
     }
 
     #[test]
     fn test_double_tap_timeout() {
-        // 1回目のリリースでDoubleTap待機
         let (s1, _) = transition(KeyState::Idle, TriggerEvent::Pressed, false, true, Instant::now());
         let (s2, _) = transition(s1, TriggerEvent::Released, false, true, Instant::now());
 
-        // 時間切れになったら1回目のTapとして確定
         let (s3, a3) = transition(s2, TriggerEvent::Timeout, false, true, Instant::now());
         assert_eq!(s3, KeyState::Idle);
         assert_eq!(a3, ActionCommand::ExecuteTapAtomic);
