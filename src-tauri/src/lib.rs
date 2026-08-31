@@ -194,13 +194,6 @@ fn set_remap_enabled(enabled: bool) {
     hook::REMAP_ENABLED.store(enabled, std::sync::atomic::Ordering::SeqCst);
 }
 
-#[tauri::command(rename = "set-mouse-trace-enabled")]
-fn set_mouse_trace_enabled(enabled: bool) {
-    log::info!("set_mouse_trace_enabled: {}", enabled);
-    #[cfg(windows)]
-    hook::set_mouse_trace_enabled(enabled);
-}
-
 #[tauri::command(rename = "add-layer")]
 fn add_layer(layer_id: String, state: State<'_, ConfigState>) {
     log::info!("add_layer: {}", layer_id);
@@ -383,7 +376,6 @@ pub fn run() {
             release_all_keys,
             save_key_config,
             set_remap_enabled,
-            set_mouse_trace_enabled,
             add_layer,
             remove_layer,
             reorder_layers,

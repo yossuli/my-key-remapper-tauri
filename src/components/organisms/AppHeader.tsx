@@ -1,5 +1,4 @@
 import {
-  Activity,
   Eye,
   EyeOff,
   Keyboard,
@@ -24,8 +23,6 @@ interface AppHeaderProps {
   onOpenSettings: () => void;
   /** マクロ管理を開くコールバック */
   onOpenMacros: () => void;
-  /** トラックパッド追従テストを開くコールバック */
-  onOpenTrackpadTest?: () => void;
 }
 
 export function AppHeader({
@@ -35,7 +32,6 @@ export function AppHeader({
   onToggleSimpleMode, // 🆕 → 🔥 (E. App Header Control)
   onOpenSettings, // 🆕 → 🔥 (E. App Header Control)
   onOpenMacros,
-  onOpenTrackpadTest,
 }: AppHeaderProps) {
   const icon = simpleMode ? Eye : EyeOff;
   return (
@@ -55,18 +51,6 @@ export function AppHeader({
       </HStack>
 
       <HStack gap={2}>
-        <With value={onOpenTrackpadTest}>
-          {(onClick) => (
-            <Button
-              className="gap-2 rounded-full text-pink-400 hover:bg-pink-950/30 hover:text-pink-300"
-              onClick={onClick}
-              variant="ghost"
-            >
-              <Icon icon={Activity} />
-              追従テスト
-            </Button>
-          )}
-        </With>
         <With value={onOpenMacros}>
           {(onClick) => (
             <Button

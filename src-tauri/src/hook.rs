@@ -14,7 +14,6 @@ static HOOK_HANDLE: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_
 static MOUSE_HOOK_HANDLE: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 pub static REMAP_ENABLED: AtomicBool = AtomicBool::new(false);
-pub static MOUSE_TRACE_ENABLED: AtomicBool = AtomicBool::new(false);
 
 // スクロールモード状態 (低レベルフック用・高速かつ非同期)
 pub static SCROLL_MODE_ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -23,8 +22,6 @@ pub static SCROLL_INVERT: AtomicBool = AtomicBool::new(false);
 pub static SCROLL_AXIS_MODE: AtomicU32 = AtomicU32::new(0); // 0=both, 1=vertical, 2=horizontal
 
 pub static SCROLL_ACCUM: Mutex<(f64, f64)> = Mutex::new((0.0, 0.0));
-
-static LAST_MOUSE_POS: Mutex<Option<(i32, i32)>> = Mutex::new(None);
 
 pub fn set_scroll_mode_state(active: bool, sensitivity: f64, invert: bool, axis: &str) {
     let sens_percent = (sensitivity * 100.0).round().max(10.0) as u32;
@@ -61,7 +58,7 @@ pub fn setup_hook(app: AppHandle) {
         ).unwrap();
         HOOK_HANDLE.store(kb_hook.0 as *mut _, Ordering::SeqCst);
 
-        // マウスフック（トラックパッド/マウストレース用）
+        // マウスフック（スクロールモード中のカーソル移動ブロック用）
         if let Ok(ms_hook) = SetWindowsHookExW(
             WH_MOUSE_LL,
             Some(mouse_proc),
@@ -88,97 +85,23 @@ pub fn teardown_hook() {
     }
 }
 
-pub fn set_mouse_trace_enabled(enabled: bool) {
-    MOUSE_TRACE_ENABLED.store(enabled, Ordering::SeqCst);
-    if !enabled {
-        let mut last_pos = LAST_MOUSE_POS.lock().unwrap();
-        *last_pos = None;
-    }
-}
-
 unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if code >= 0 && lparam.0 != 0 {
         let ms_struct = *(lparam.0 as *const MSLLHOOKSTRUCT);
         let msg = wparam.0 as u32;
 
         const WM_MOUSEMOVE: u32 = 0x0200;
-        const WM_LBUTTONDOWN: u32 = 0x0201;
-        const WM_LBUTTONUP: u32 = 0x0202;
-        const WM_RBUTTONDOWN: u32 = 0x0204;
-        const WM_RBUTTONUP: u32 = 0x0205;
-        const WM_MBUTTONDOWN: u32 = 0x0207;
-        const WM_MBUTTONUP: u32 = 0x0208;
-        const WM_MOUSEWHEEL: u32 = 0x020A;
-        const WM_MOUSEHWHEEL: u32 = 0x020E;
 
         let is_injected = (ms_struct.flags & 0x01) != 0;
 
         if !is_injected {
-            // 1. スクロールモード中のカーソル移動ブロック（Raw Input で変位スクロール処理）
+            // スクロールモード中のカーソル移動ブロック（Raw Input で変位スクロール処理）
             let remap_enabled = REMAP_ENABLED.load(Ordering::Relaxed);
             let scroll_active = SCROLL_MODE_ACTIVE.load(Ordering::Relaxed);
 
             if remap_enabled && scroll_active && msg == WM_MOUSEMOVE {
                 // LRESULT(1) でカーソル移動をキャンセル（その場に固定）
                 return windows::Win32::Foundation::LRESULT(1);
-            }
-
-            // 2. テスト用トレースイベント発火
-            if MOUSE_TRACE_ENABLED.load(Ordering::Relaxed) {
-                if let Some(app) = APP_HANDLE.get() {
-                    let x = ms_struct.pt.x;
-                    let y = ms_struct.pt.y;
-                    let event_type = match msg {
-                        WM_MOUSEMOVE => "move",
-                        WM_MOUSEWHEEL => "wheel",
-                        WM_MOUSEHWHEEL => "hwheel",
-                        WM_LBUTTONDOWN => "down",
-                        WM_LBUTTONUP => "up",
-                        WM_RBUTTONDOWN => "down",
-                        WM_RBUTTONUP => "up",
-                        WM_MBUTTONDOWN => "down",
-                        WM_MBUTTONUP => "up",
-                        _ => "other",
-                    };
-
-                    let wheel_delta = if msg == WM_MOUSEWHEEL || msg == WM_MOUSEHWHEEL {
-                        ((ms_struct.mouseData >> 16) as i16) as i32
-                    } else {
-                        0
-                    };
-
-                    let mut last_pos_guard = LAST_MOUSE_POS.lock().unwrap();
-                    let (dx, dy) = if let Some((lx, ly)) = *last_pos_guard {
-                        (x - lx, y - ly)
-                    } else {
-                        (0, 0)
-                    };
-                    *last_pos_guard = Some((x, y));
-                    drop(last_pos_guard);
-
-                    let pressed_keys: Vec<u32> = {
-                        get_pressed_keys_set().lock().unwrap().iter().copied().collect()
-                    };
-
-                    let now_ms = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis() as u64;
-
-                    let app_clone = app.clone();
-                    tauri::async_runtime::spawn(async move {
-                        let _ = app_clone.emit("mouse-trace-event", serde_json::json!({
-                            "x": x,
-                            "y": y,
-                            "dx": dx,
-                            "dy": dy,
-                            "eventType": event_type,
-                            "wheelDelta": wheel_delta,
-                            "timestamp": now_ms,
-                            "pressedKeys": pressed_keys
-                        }));
-                    });
-                }
             }
         }
     }

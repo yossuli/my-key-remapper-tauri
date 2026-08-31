@@ -187,8 +187,7 @@ pub fn send_mouse_wheel(delta_y: i32, delta_x: i32) {
 
     if !inputs.is_empty() {
         unsafe {
-            let res = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
-            log::info!("send_mouse_wheel result: {}, delta_y: {}, delta_x: {}", res, delta_y, delta_x);
+            let _ = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
         }
     }
 }

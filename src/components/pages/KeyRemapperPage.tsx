@@ -36,12 +36,10 @@ export interface MappingActions {
 
 interface KeyRemapperPageProps {
   onNavigateMacros: () => void;
-  onNavigateTrackpadTest?: () => void;
 }
 
 export function KeyRemapperPage({
   onNavigateMacros,
-  onNavigateTrackpadTest,
 }: KeyRemapperPageProps) {
   // カスタムフックでロジックを分離
   const {
@@ -88,7 +86,6 @@ export function KeyRemapperPage({
             isActive={isActive} // 🆕 → 🔥 (E. App Header Control)
             onOpenMacros={onNavigateMacros}
             onOpenSettings={() => setIsSettingsOpen(true)} // 🆕 → 🔥 (E. App Header Control)
-            onOpenTrackpadTest={onNavigateTrackpadTest}
             onToggleActive={toggleActive} // 🆕 → 🔥 (E. App Header Control)
             onToggleSimpleMode={() => setSimpleMode((prev) => !prev)} // 🆕 → 🔥 (E. App Header Control)
             simpleMode={simpleMode} // 🆕 → 🔥 (E. App Header Control)
