@@ -47,6 +47,10 @@ fn execute_macro_sync(macro_id: &str, config: &Config, depth: u32) {
                             crate::key_processor::utils::send_mouse_move(x, y);
                         }
                         "mouseClick" => {
+                            if let (Some(x), Some(y)) = (step.get("x").and_then(|v| v.as_i64()), step.get("y").and_then(|v| v.as_i64())) {
+                                log::info!("    mouseClick move to: ({}, {})", x, y);
+                                crate::key_processor::utils::send_mouse_move(x as i32, y as i32);
+                            }
                             let button = step.get("button").and_then(|v| v.as_str()).unwrap_or("left");
                             let click_count = step.get("clickCount").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
                             log::info!("    mouseClick: button={}, count={}", button, click_count);

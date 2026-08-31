@@ -19,6 +19,9 @@ pub fn apply_action(physical_vk: u16, action: &serde_json::Value, is_atomic: boo
             crate::key_processor::utils::send_mouse_move(x, y);
         }
         "mouseClick" => {
+            if let (Some(x), Some(y)) = (action.get("x").and_then(|v| v.as_i64()), action.get("y").and_then(|v| v.as_i64())) {
+                crate::key_processor::utils::send_mouse_move(x as i32, y as i32);
+            }
             let button = action.get("button").and_then(|v| v.as_str()).unwrap_or("left");
             let click_count = action.get("clickCount").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
             crate::key_processor::utils::send_mouse_click(button, click_count);

@@ -150,17 +150,19 @@ fn release_all_keys() {
 
 #[tauri::command(rename = "get-screen-size")]
 fn get_screen_size() -> Value {
+    let (width, height) = crate::key_processor::utils::get_screen_size();
     serde_json::json!({
-        "width": 1920,
-        "height": 1080
+        "width": width,
+        "height": height
     })
 }
 
 #[tauri::command(rename = "get-cursor-position")]
 fn get_cursor_position() -> Value {
+    let (x, y) = crate::key_processor::utils::get_mouse_pos();
     serde_json::json!({
-        "x": 0,
-        "y": 0
+        "x": x,
+        "y": y
     })
 }
 

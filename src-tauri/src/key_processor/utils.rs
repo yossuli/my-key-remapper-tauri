@@ -94,8 +94,14 @@ pub fn apply_layer_modifiers(old_layers: &[String], new_layers: &[String], confi
     }
 }
 
-use windows::Win32::UI::WindowsAndMessaging::{SetCursorPos, GetCursorPos};
+use windows::Win32::UI::WindowsAndMessaging::{SetCursorPos, GetCursorPos, GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
 use windows::Win32::Foundation::POINT;
+
+pub fn get_screen_size() -> (i32, i32) {
+    let width = unsafe { GetSystemMetrics(SM_CXSCREEN) };
+    let height = unsafe { GetSystemMetrics(SM_CYSCREEN) };
+    (width, height)
+}
 
 pub fn get_mouse_pos() -> (i32, i32) {
     let mut pt = POINT { x: 0, y: 0 };
