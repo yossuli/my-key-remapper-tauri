@@ -1,4 +1,3 @@
-import type { Action, TriggerType } from "@/types/remapConfig";
 import { useCallback, useEffect, useState } from "react";
 import { useGetMappings } from "@/hooks/api/useInvoke";
 import {
@@ -9,6 +8,7 @@ import {
   DEFAULT_REPEAT_DELAY_MS,
   DEFAULT_REPEAT_INTERVAL_MS,
 } from "@/models/bindingStateModel";
+import type { Action, TriggerType } from "@/types/remapConfig";
 
 export interface RepeatConfig {
   enabled: boolean;
@@ -28,6 +28,11 @@ export interface ActionSetters {
   ) => void;
   setCursorSaveAction: () => void;
   setCursorRestoreAction: () => void;
+  setScrollModeAction: (
+    sensitivity?: number,
+    invert?: boolean,
+    axis?: "both" | "vertical" | "horizontal"
+  ) => void;
   setMacroAction: (macroId: string) => void;
   setDelayAction: (delayMs: number) => void;
   setNoneAction: () => void;
@@ -77,7 +82,11 @@ export function useBindingConfig({
     holdThresholdMs: number | undefined;
     tapIntervalMs: number | undefined;
     interruptBehavior: "forceTap" | "forceHold" | "ignore" | undefined;
-  }>({ holdThresholdMs: undefined, tapIntervalMs: undefined, interruptBehavior: undefined });
+  }>({
+    holdThresholdMs: undefined,
+    tapIntervalMs: undefined,
+    interruptBehavior: undefined,
+  });
 
   const loadBinding = useCallback<UseBindingConfigReturn["loadBinding"]>(
     async (t) => {
@@ -101,9 +110,12 @@ export function useBindingConfig({
           setState(partial);
           setExistingTiming((prev) => ({
             ...prev,
-            holdThresholdMs: t === "hold" ? binding.timingMs : prev.holdThresholdMs,
-            tapIntervalMs: t === "doubleTap" ? binding.timingMs : prev.tapIntervalMs,
-            interruptBehavior: t === "hold" ? binding.interruptBehavior : prev.interruptBehavior,
+            holdThresholdMs:
+              t === "hold" ? binding.timingMs : prev.holdThresholdMs,
+            tapIntervalMs:
+              t === "doubleTap" ? binding.timingMs : prev.tapIntervalMs,
+            interruptBehavior:
+              t === "hold" ? binding.interruptBehavior : prev.interruptBehavior,
           }));
         } else {
           setState(createInitialBindingState());
@@ -122,7 +134,7 @@ export function useBindingConfig({
         setExistingTiming({
           holdThresholdMs: holdTiming,
           tapIntervalMs: doubleTapTiming,
-          interruptBehavior: interruptBehavior,
+          interruptBehavior,
         });
       } catch (err) {
         console.error("Failed to load binding config:", err);
@@ -198,6 +210,17 @@ export function useBindingConfig({
     setState({ actionType: "cursorRestore" });
   }, []);
 
+  const setScrollModeAction = useCallback<
+    ActionSetters["setScrollModeAction"]
+  >((sensitivity, invert, axis) => {
+    setState({
+      actionType: "scrollMode",
+      sensitivity: sensitivity ?? 1.0,
+      invert: invert ?? false,
+      axis: axis ?? "both",
+    });
+  }, []);
+
   const setMacroAction = useCallback<ActionSetters["setMacroAction"]>(
     (macroId) => {
       setState({ actionType: "macro", macroId });
@@ -223,6 +246,7 @@ export function useBindingConfig({
     setMouseClickAction,
     setCursorSaveAction,
     setCursorRestoreAction,
+    setScrollModeAction,
     setMacroAction,
     setDelayAction,
     setNoneAction,

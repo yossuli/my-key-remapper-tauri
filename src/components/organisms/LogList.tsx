@@ -4,20 +4,20 @@ import { Icon } from "@/components/atoms/Icon";
 import { HandleEmpty } from "@/components/control/HandleEmpty";
 import { LogEntry } from "@/components/molecules/display/LogEntry";
 import { VStack } from "@/components/template/Flex";
-import { useKeyEventLog } from "@/hooks/ui/useKeyEventLog";
 import { useIpc } from "@/hooks/api/useIpc";
+import { useKeyEventLog } from "@/hooks/ui/useKeyEventLog";
 
 export function LogList() {
   const { logs, isPaused, setIsPaused } = useKeyEventLog();
   const [debugEnabled, setDebugEnabled] = useState(false);
-    const { send } = useIpc();
-    const toggleDebug = () => {
-      const newState = !debugEnabled;
-      setDebugEnabled(newState);
-      send("set-debug-log-enabled", {
-        enabled: newState,
-      });
-    };
+  const { send } = useIpc();
+  const toggleDebug = () => {
+    const newState = !debugEnabled;
+    setDebugEnabled(newState);
+    send("set-debug-log-enabled", {
+      enabled: newState,
+    });
+  };
 
   return (
     <section className="flex h-fit flex-col overflow-hidden rounded-xl border bg-card shadow-sm">

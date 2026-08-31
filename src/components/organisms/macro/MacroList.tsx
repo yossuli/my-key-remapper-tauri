@@ -1,10 +1,10 @@
-import type { MacroDef } from "@/types/remapConfig";
 import { Copy, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
 import { DataGrid } from "@/components/atoms/DataGrid";
 import { Icon } from "@/components/atoms/Icon";
 import { Else, Ternary, Then } from "@/components/control/Ternary";
 import { HStack, VStack } from "@/components/template/Flex";
+import type { MacroDef } from "@/types/remapConfig";
 
 interface MacroListProps {
   macros: MacroDef[];

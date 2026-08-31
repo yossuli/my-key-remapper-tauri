@@ -1,8 +1,8 @@
 // IPC invokeの型安全ラッパー
 
-import type { Layer } from "@/types/remapConfig";
 import { useCallback } from "react";
 import { useIpc } from "@/hooks/api/useIpc";
+import type { Layer } from "@/types/remapConfig";
 
 /**
  * IPC invokeの型安全ラッパー

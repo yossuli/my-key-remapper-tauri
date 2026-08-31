@@ -1,8 +1,14 @@
-import type { TriggerType } from "@/types/remapConfig";
 import { TimingInput } from "@/components/molecules/forms/TimingInput";
-import { TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { TabsContent } from "@/components/ui/tabs";
+import type { TriggerType } from "@/types/remapConfig";
 
 interface TimingSettingsSectionProps {
   selectedTrigger: TriggerType;
@@ -13,7 +19,9 @@ interface TimingSettingsSectionProps {
   defaultTapIntervalMs: number | undefined;
   setHoldThresholdMs: (ms: number | undefined) => void;
   setTapIntervalMs: (ms: number | undefined) => void;
-  setInterruptBehavior: (behavior: "forceTap" | "forceHold" | "ignore" | undefined) => void;
+  setInterruptBehavior: (
+    behavior: "forceTap" | "forceHold" | "ignore" | undefined
+  ) => void;
   setIsInputFocused: (focused: boolean) => void;
 }
 
@@ -31,7 +39,7 @@ export function TimingSettingsSection({
 }: TimingSettingsSectionProps) {
   return (
     <>
-      <TabsContent value="hold" className="space-y-4">
+      <TabsContent className="space-y-4" value="hold">
         <TimingInput
           defaultValue={defaultHoldThresholdMs}
           id="holdThreshold"
@@ -43,16 +51,22 @@ export function TimingSettingsSection({
         <div className="grid gap-2">
           <Label>Hold待機中の他キー入力割り込み</Label>
           <Select
-            value={interruptBehavior || "forceTap"}
-            onValueChange={(val) => setInterruptBehavior(val as "forceTap" | "forceHold" | "ignore")}
             onOpenChange={setIsInputFocused}
+            onValueChange={(val) =>
+              setInterruptBehavior(val as "forceTap" | "forceHold" | "ignore")
+            }
+            value={interruptBehavior || "forceTap"}
           >
             <SelectTrigger>
               <SelectValue placeholder="挙動を選択" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="forceTap">Tapとして発火 (文字キー向け)</SelectItem>
-              <SelectItem value="forceHold">即座にHold確定 (修飾キー向け)</SelectItem>
+              <SelectItem value="forceTap">
+                Tapとして発火 (文字キー向け)
+              </SelectItem>
+              <SelectItem value="forceHold">
+                即座にHold確定 (修飾キー向け)
+              </SelectItem>
               <SelectItem value="ignore">判定保留</SelectItem>
             </SelectContent>
           </Select>

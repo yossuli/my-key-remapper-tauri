@@ -1,5 +1,5 @@
-import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useCallback } from "react";
 
 /**
  * マウスカーソル位置を取得するフック
@@ -10,7 +10,9 @@ export function useMousePosition() {
     y: number;
   }> => {
     try {
-      const position = await invoke<{x: number; y: number}>("get-cursor-position");
+      const position = await invoke<{ x: number; y: number }>(
+        "get-cursor-position"
+      );
       return position;
     } catch (error) {
       console.error("Failed to get cursor position:", error);

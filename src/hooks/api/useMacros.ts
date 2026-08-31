@@ -1,6 +1,6 @@
-import type { MacroDef } from "@/types/remapConfig";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useIpc } from "@/hooks/api/useIpc";
+import type { MacroDef } from "@/types/remapConfig";
 
 export function useMacros() {
   const [macros, setMacros] = useState<MacroDef[]>([]);

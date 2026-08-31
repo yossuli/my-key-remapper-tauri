@@ -1,4 +1,3 @@
-import type { KeyBinding, TriggerType } from "@/types/remapConfig";
 import { Settings, Zap } from "lucide-react";
 import {
   type Dispatch,
@@ -25,6 +24,7 @@ import type { UseKeyEventLogReturn } from "@/hooks/ui/useKeyEventLog";
 import type { UseLayerStackReturn } from "@/hooks/ui/useLayerStack";
 import { useQuickRemap } from "@/hooks/ui/useQuickRemap";
 import type { KeyboardLayout, LayoutType } from "@/types";
+import type { KeyBinding, TriggerType } from "@/types/remapConfig";
 import { cn } from "@/utils/cn";
 import { Show } from "../control/Show";
 

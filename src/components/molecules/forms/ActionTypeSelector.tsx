@@ -1,6 +1,6 @@
-import type { ActionType, TriggerType } from "@/types/remapConfig";
 import { useMemo } from "react";
 import { Select } from "@/components/atoms/Select";
+import type { ActionType, TriggerType } from "@/types/remapConfig";
 
 const ACTION_TYPE_OPTIONS = [
   { id: "remap", value: "remap", label: "キーリマップ" },
@@ -9,6 +9,11 @@ const ACTION_TYPE_OPTIONS = [
     id: "layerMomentary",
     value: "layerMomentary",
     label: "レイヤー（押下中）",
+  },
+  {
+    id: "scrollMode",
+    value: "scrollMode",
+    label: "トラックパッドスクロール（押下中）",
   },
   { id: "mouseMove", value: "mouseMove", label: "マウス移動" },
   { id: "mouseClick", value: "mouseClick", label: "マウスクリック" },

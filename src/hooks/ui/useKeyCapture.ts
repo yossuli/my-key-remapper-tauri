@@ -1,5 +1,5 @@
-import { MAX_VK_CODE, MIN_VK_CODE } from "@/constants/vk";
 import { useCallback, useState } from "react";
+import { MAX_VK_CODE, MIN_VK_CODE } from "@/constants/vk";
 
 export interface UseKeyCaptureReturn {
   holds: number[];

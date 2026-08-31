@@ -1,8 +1,8 @@
 // レイヤー状態とマッピング管理のカスタムフック
 
-import type { Action, Layer, TriggerType } from "@/types/remapConfig";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useIpc } from "@/hooks/api/useIpc";
+import type { Action, Layer, TriggerType } from "@/types/remapConfig";
 import { remove, upsert } from "@/utils/handleMapping";
 
 const REFRESH_DELAY_MS = 100;
@@ -21,7 +21,11 @@ export interface UseLayerStateReturn {
     selectedTrigger: TriggerType
   ) => (
     action: Action,
-    timing?: { hold?: number; doubleTap?: number; interruptBehavior?: "forceTap" | "forceHold" | "ignore" },
+    timing?: {
+      hold?: number;
+      doubleTap?: number;
+      interruptBehavior?: "forceTap" | "forceHold" | "ignore";
+    },
     activeTrigger?: TriggerType
   ) => void;
   removeMapping: (from: number, trigger: TriggerType) => void;
@@ -96,7 +100,9 @@ export function useLayerState(): UseLayerStateReturn {
       // triggerに応じたtimingMsを決定
       const trigger = activeTrigger || selectedTrigger;
       const timingMs =
-        trigger === "hold" || trigger === "doubleTap" ? (timing as any)?.[trigger] : undefined;
+        trigger === "hold" || trigger === "doubleTap"
+          ? (timing as any)?.[trigger]
+          : undefined;
       const interruptBehavior =
         trigger === "hold" ? (timing as any)?.interruptBehavior : undefined;
 

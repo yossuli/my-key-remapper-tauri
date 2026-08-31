@@ -2,8 +2,9 @@ use crate::Config;
 use std::collections::HashSet;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
-    INPUT_MOUSE, MOUSEINPUT, MOUSEEVENTF_MOVE, MOUSEEVENTF_ABSOLUTE,
-    MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP
+    INPUT_MOUSE, MOUSEINPUT,
+    MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP,
+    MOUSEEVENTF_WHEEL, MOUSEEVENTF_HWHEEL
 };
 use super::state::get_state;
 
@@ -146,5 +147,48 @@ pub fn send_mouse_click(button: &str, click_count: u32) {
     unsafe {
         let result = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
         log::info!("send_mouse_click result: {}", result);
+    }
+}
+
+pub fn send_mouse_wheel(delta_y: i32, delta_x: i32) {
+    let mut inputs = Vec::new();
+
+    if delta_y != 0 {
+        inputs.push(INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx: 0,
+                    dy: 0,
+                    mouseData: delta_y as u32,
+                    dwFlags: MOUSEEVENTF_WHEEL,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        });
+    }
+
+    if delta_x != 0 {
+        inputs.push(INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx: 0,
+                    dy: 0,
+                    mouseData: delta_x as u32,
+                    dwFlags: MOUSEEVENTF_HWHEEL,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        });
+    }
+
+    if !inputs.is_empty() {
+        unsafe {
+            let res = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+            log::info!("send_mouse_wheel result: {}, delta_y: {}, delta_x: {}", res, delta_y, delta_x);
+        }
     }
 }

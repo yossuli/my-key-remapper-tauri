@@ -130,6 +130,9 @@ impl KeyProcessor {
                 }
             }
             ActionCommand::ReleaseTap | ActionCommand::ReleaseHold | ActionCommand::ReleaseDoubleTap => {
+                #[cfg(windows)]
+                crate::hook::set_scroll_mode_state(false, 1.0, false, "both");
+
                 let mut state = get_state().lock().unwrap();
                 let vks = state.pressed_vks.remove(&vk).unwrap_or_default();
                 for target in vks {

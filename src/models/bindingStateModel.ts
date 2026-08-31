@@ -55,6 +55,13 @@ export interface MacroBindingState {
   macroId: string;
 }
 
+export interface ScrollModeBindingState {
+  actionType: "scrollMode";
+  sensitivity?: number;
+  invert?: boolean;
+  axis?: "both" | "vertical" | "horizontal";
+}
+
 export type BindingState =
   | RemapBindingState
   | LayerToggleBindingState
@@ -64,6 +71,7 @@ export type BindingState =
   | NoneBindingState
   | CursorSaveBindingState
   | CursorRestoreBindingState
+  | ScrollModeBindingState
   | DelayBindingState
   | MacroBindingState;
 
@@ -111,6 +119,12 @@ export function actionToBindingState(action: Action): BindingState {
         actionType: "macro",
         macroId: act.macroId,
       }),
+      scrollMode: (act) => ({
+        actionType: "scrollMode",
+        sensitivity: act.sensitivity ?? 1.0,
+        invert: act.invert ?? false,
+        axis: act.axis ?? "both",
+      }),
     },
     action,
     "type"
@@ -153,6 +167,12 @@ export function convertBindingStateToAction(state: BindingState): Action {
       }),
       cursorSave: () => ({ type: "cursorSave" }),
       cursorRestore: () => ({ type: "cursorRestore" }),
+      scrollMode: (s) => ({
+        type: "scrollMode",
+        sensitivity: s.sensitivity,
+        invert: s.invert,
+        axis: s.axis,
+      }),
       delay: (s) => ({ type: "delay", delayMs: s.delayActionMs }),
       none: () => ({ type: "none" }),
     },
@@ -210,6 +230,13 @@ export function getInitialStateForType(type: ActionType): BindingState {
       return { actionType: "cursorSave" };
     case "cursorRestore":
       return { actionType: "cursorRestore" };
+    case "scrollMode":
+      return {
+        actionType: "scrollMode",
+        sensitivity: 1.0,
+        invert: false,
+        axis: "both",
+      };
     case "delay":
       return {
         actionType: "delay",

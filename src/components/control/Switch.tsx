@@ -1,4 +1,3 @@
-import type { JSX } from "react";
 import React from "react";
 import { findWithComponentType } from "@/components/control/index";
 import { define } from "@/utils/define";
@@ -59,7 +58,7 @@ export const Default = <T extends React.ElementType = typeof React.Fragment>({
 
 export const Switch = ({ children }: { children: React.ReactNode }) => {
   const childArray = React.Children.toArray(children) as React.ReactElement[];
-  
+
   const match = childArray.find(
     (child) =>
       (child.type === Case || child.type === DefineCase) &&

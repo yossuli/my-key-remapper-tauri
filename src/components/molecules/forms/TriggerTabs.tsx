@@ -2,12 +2,12 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 export { Tabs, TabsContent, TabsList, TabsTrigger };
 
-import type { TriggerType } from "@/types/remapConfig";
 import type { ReactNode } from "react";
 import { Mapped } from "@/components/control/Mapped";
 import { Show } from "@/components/control/Show";
 import { Then } from "@/components/control/Ternary";
 import { VStack } from "@/components/template/Flex";
+import type { TriggerType } from "@/types/remapConfig";
 import { cn } from "@/utils/cn";
 
 interface TriggerOption {

@@ -1,5 +1,3 @@
-import type { Action } from "@/types/remapConfig";
-import { objectiveDiscriminantSwitch } from "@/utils/objectiveSwitch";
 import { useDragControls } from "framer-motion";
 import { GripVertical, Trash2 } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
@@ -9,6 +7,8 @@ import { RichText } from "@/components/atoms/RichText";
 import { Else, Ternary, Then } from "@/components/control/Ternary";
 import { HStack } from "@/components/template/Flex";
 import { useMacros } from "@/hooks/api/useMacros";
+import type { Action } from "@/types/remapConfig";
+import { objectiveDiscriminantSwitch } from "@/utils/objectiveSwitch";
 import type { ActionSummaryHandlers } from "../organisms/macro/types";
 
 interface ActionItemProps {
@@ -85,6 +85,10 @@ export function ActionItem({
       },
       cursorSave: () => "カーソル位置記憶",
       cursorRestore: () => "カーソル位置復元",
+      scrollMode: (a) =>
+        `トラックパッドスクロール (感度: **${(a.sensitivity ?? 1.0).toFixed(1)}x**${
+          a.invert ? ", 反転" : ""
+        })`,
       none: () => "((なし))",
     },
     action,

@@ -1,4 +1,3 @@
-import type { Action, Layer, TriggerType } from "@/types/remapConfig";
 import { ArrowRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/atoms/Button";
@@ -10,14 +9,15 @@ import { TriggerTabs } from "@/components/molecules/forms/TriggerTabs";
 import { ActionSettingsSection } from "@/components/organisms/editor/ActionSettingsSection";
 import { TimingSettingsSection } from "@/components/organisms/editor/TimingSettingsSection";
 import { HStack, VStack } from "@/components/template/Flex";
+import { VK } from "@/constants/vk";
 import { useBindingConfig } from "@/hooks/ui/useBindingConfig";
 import { useKeyHoldAction } from "@/hooks/ui/useKeyHoldAction";
-import { VK } from "@/constants/vk";
 import {
   type BindingState,
   createBindingStateFromAction,
 } from "@/models/bindingStateModel";
 import type { LayoutType } from "@/types";
+import type { Action, Layer, TriggerType } from "@/types/remapConfig";
 
 export interface UnifiedActionEditorProps {
   // 初期状態
@@ -39,7 +39,11 @@ export interface UnifiedActionEditorProps {
   // ハンドラー
   onSave: (
     action: Action,
-    timing?: { hold?: number; doubleTap?: number; interruptBehavior?: "forceTap" | "forceHold" | "ignore" },
+    timing?: {
+      hold?: number;
+      doubleTap?: number;
+      interruptBehavior?: "forceTap" | "forceHold" | "ignore";
+    },
     trigger?: TriggerType
   ) => void;
   handleEditorClose: () => void;
@@ -95,7 +99,11 @@ export function UnifiedActionEditor({
   const handleSaveInternal = useCallback(
     (action: Action) => {
       const timing = targetVk
-        ? { hold: localHoldThresholdMs, doubleTap: localTapIntervalMs, interruptBehavior: localInterruptBehavior }
+        ? {
+            hold: localHoldThresholdMs,
+            doubleTap: localTapIntervalMs,
+            interruptBehavior: localInterruptBehavior,
+          }
         : undefined;
       onSave(action, timing, selectedTrigger);
       handleEditorClose?.();
@@ -137,8 +145,10 @@ export function UnifiedActionEditor({
   });
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (isInputFocused) return;
-    
+    if (isInputFocused) {
+      return;
+    }
+
     // getVkCode の代わりに簡易的に e.keyCode を渡すか、VK.ENTER を期待するか
     // ここでは key が Enter なら VK.ENTER を渡すようにする。
     const vkCode = e.key === "Enter" ? VK.ENTER : e.keyCode;
@@ -147,12 +157,14 @@ export function UnifiedActionEditor({
       onHold: () => {
         console.log("[DEBUG] エンター長押し完了。モーダルを保存して閉じます。");
         handleSave();
-      }
+      },
     });
   };
 
   const onKeyUp = (e: React.KeyboardEvent) => {
-    if (isInputFocused) return;
+    if (isInputFocused) {
+      return;
+    }
     const vkCode = e.key === "Enter" ? VK.ENTER : e.keyCode;
     handleHoldKeyUp(vkCode, {});
   };
@@ -196,13 +208,17 @@ export function UnifiedActionEditor({
 
   return (
     <VStack
-      ref={vstackRef}
-      className={targetVk ? "px-6 focus:outline-none" : "h-full min-h-[400px] p-6 focus:outline-none"}
-      // biome-ignore lint/style/noMagicNumbers: UIのgapは適切な値なので許容
+      className={
+        targetVk
+          ? "px-6 focus:outline-none"
+          : "h-full min-h-[400px] p-6 focus:outline-none"
+      }
       gap={targetVk ? 4 : 6}
-      tabIndex={0}
+      // biome-ignore lint/style/noMagicNumbers: UIのgapは適切な値なので許容
       onKeyDown={onKeyDown}
       onKeyUp={onKeyUp}
+      ref={vstackRef}
+      tabIndex={0}
     >
       <Show condition={!!targetVk}>
         <div className="flex items-center justify-center gap-4 font-bold text-2xl">
@@ -247,13 +263,13 @@ export function UnifiedActionEditor({
           defaultHoldThresholdMs={200}
           defaultTapIntervalMs={300}
           holdThresholdMs={localHoldThresholdMs}
-          tapIntervalMs={localTapIntervalMs}
           interruptBehavior={localInterruptBehavior}
           selectedTrigger={selectedTrigger}
           setHoldThresholdMs={setLocalHoldThresholdMs}
-          setTapIntervalMs={setLocalTapIntervalMs}
           setInterruptBehavior={setLocalInterruptBehavior}
           setIsInputFocused={setIsInputFocused}
+          setTapIntervalMs={setLocalTapIntervalMs}
+          tapIntervalMs={localTapIntervalMs}
         />
       </TriggerTabs>
       <HStack

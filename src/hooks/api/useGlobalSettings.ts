@@ -1,9 +1,6 @@
-import {
-  DEFAULT_REMAP_CONFIG,
-  type GlobalSettings,
-} from "@/types/remapConfig";
-import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useState } from "react";
+import { DEFAULT_REMAP_CONFIG, type GlobalSettings } from "@/types/remapConfig";
 
 /**
  * グローバル設定を管理するカスタムフック

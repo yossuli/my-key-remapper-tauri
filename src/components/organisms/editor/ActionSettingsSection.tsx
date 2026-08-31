@@ -1,21 +1,12 @@
-import type { ActionType, Layer, TriggerType } from "@/types/remapConfig";
-import { isCircularMacro } from "@/utils/macroUtils";
-import {
-  objectiveDiscriminantSwitch,
-  objectiveMergeSwitch,
-} from "@/utils/objectiveSwitch";
 import { Keyboard, Save, Timer, Undo } from "lucide-react";
 import { EditorSection } from "@/components/molecules/EditorSection";
 import { ActionNumericInput } from "@/components/molecules/forms/ActionNumericInput";
 import { ActionSelector } from "@/components/molecules/forms/ActionSelector";
-
 import { RemapKeySection } from "@/components/organisms/editor/RemapKeySection";
 import { useMacros } from "@/hooks/api/useMacros";
 import type { ActionSetters } from "@/hooks/ui/useBindingConfig";
 import {
   type BindingState,
-  type CursorRestoreBindingState,
-  type CursorSaveBindingState,
   DEFAULT_DELAY_MS,
   type DelayBindingState,
   getInitialStateForType,
@@ -25,12 +16,20 @@ import {
   type MouseClickBindingState,
   type MouseMoveBindingState,
   type RemapBindingState,
+  type ScrollModeBindingState,
 } from "@/models/bindingStateModel";
 import type { LayoutType } from "@/types";
+import type { ActionType, Layer, TriggerType } from "@/types/remapConfig";
+import { isCircularMacro } from "@/utils/macroUtils";
+import {
+  objectiveDiscriminantSwitch,
+  objectiveMergeSwitch,
+} from "@/utils/objectiveSwitch";
 import { LayerActionSettings } from "./LayerActionSettings";
 import { MacroActionSettings } from "./MacroActionSettings";
 import { MouseClickActionSettings } from "./MouseClickActionSettings";
 import { MouseMoveActionSettings } from "./MouseMoveActionSettings";
+import { ScrollActionSettings } from "./ScrollActionSettings";
 
 interface ActionSettingsSectionProps {
   selectedTrigger: TriggerType;
@@ -92,6 +91,8 @@ export function ActionSettingsSection({
           ),
         cursorSave: () => actionSetters.setCursorSaveAction(),
         cursorRestore: () => actionSetters.setCursorRestoreAction(),
+        scrollMode: (s: ScrollModeBindingState) =>
+          actionSetters.setScrollModeAction(s.sensitivity, s.invert, s.axis),
         macro: (s: MacroBindingState) =>
           actionSetters.setMacroAction(s.macroId),
         delay: (s: DelayBindingState) =>
@@ -172,6 +173,12 @@ export function ActionSettingsSection({
               title="カーソル位置復元"
             />
           ),
+          scrollMode: (s) => (
+            <ScrollActionSettings
+              actionSetters={actionSetters}
+              state={s}
+            />
+          ),
           macro: (s) => (
             <MacroActionSettings
               actionSetters={actionSetters}
@@ -209,6 +216,7 @@ export function ActionSettingsSection({
           mouseClick: "mouseClick",
           cursorSave: "cursorSave",
           cursorRestore: "cursorRestore",
+          scrollMode: "scrollMode",
           delay: "delay",
           macro: "macro",
         }

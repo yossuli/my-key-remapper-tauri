@@ -1,5 +1,3 @@
-import { VK } from "@/constants/vk";
-import type { TriggerType } from "@/types/remapConfig";
 import { ArrowRight } from "lucide-react";
 import { useState } from "react";
 import { Icon } from "@/components/atoms/Icon";
@@ -11,6 +9,7 @@ import { KeyRemapList } from "@/components/molecules/forms/KeyRemapList";
 import { HStack, VStack } from "@/components/template/Flex";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { VK } from "@/constants/vk";
 import type { ActionSetters, RepeatConfig } from "@/hooks/ui/useBindingConfig";
 import {
   DEFAULT_REPEAT_DELAY_MS,
@@ -18,6 +17,7 @@ import {
   type RemapBindingState,
 } from "@/models/bindingStateModel";
 import type { LayoutType } from "@/types";
+import type { TriggerType } from "@/types/remapConfig";
 
 interface RemapKeySectionProps {
   targetVk: number;

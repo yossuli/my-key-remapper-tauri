@@ -1,8 +1,4 @@
-import type {
-  KeyboardLayout,
-  LayerType,
-  LayoutType,
-} from "@/types";
+import type { KeyboardLayout, LayerType, LayoutType } from "@/types";
 
 import { KEYBOARD_LAYOUT_JIS, KEYBOARD_LAYOUT_JIS_SHIFT } from "./jis";
 import { KEYBOARD_LAYOUT_US, KEYBOARD_LAYOUT_US_SHIFT } from "./us";

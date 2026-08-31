@@ -1,4 +1,3 @@
-import type { Layer } from "@/types/remapConfig";
 import { useEffect, useState } from "react";
 import { KeyRemapList } from "@/components/molecules/forms/KeyRemapList";
 import { VStack } from "@/components/template/Flex";
@@ -12,6 +11,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import type { LayoutType } from "@/types";
+import type { Layer } from "@/types/remapConfig";
 
 interface LayerSettingsModalProps {
   layerId: string | null;

@@ -1,7 +1,7 @@
-import { SWITCH_LAYOUT_RULE } from "@/constants";
 import { Keyboard } from "lucide-react";
 import { Button } from "@/components/atoms/Button";
 import { Icon } from "@/components/atoms/Icon";
+import { SWITCH_LAYOUT_RULE } from "@/constants";
 import type { LayoutType } from "@/types";
 
 interface LayoutToggleProps {

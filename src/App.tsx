@@ -1,28 +1,35 @@
 import { useState } from "react";
-import { Else, Ternary, Then } from "@/components/control/Ternary";
+import { Case, Default, Switch } from "@/components/control/Switch";
 import { KeyRemapperPage } from "@/components/pages/KeyRemapperPage";
 import { MacroManagerPage } from "@/components/pages/MacroManagerPage";
+import { TrackpadTraceTestPage } from "@/components/pages/TrackpadTraceTestPage";
 import { useRemapControl } from "@/hooks/api/useRemapControl";
 
-export type ViewType = "remapper" | "macros";
+export type ViewType = "remapper" | "macros" | "trackpad-test";
 
 export default function App() {
   const [view, setView] = useState<ViewType>("remapper");
   const { enableRemap } = useRemapControl();
 
-  const handleBackFromMacros = () => {
-    enableRemap(); // マクロ編集ページを離れる際に確実にリマップを復帰させる
+  const handleBackToRemapper = () => {
+    enableRemap(); // 他ページを離れる際に確実にリマップを復帰させる
     setView("remapper");
   };
 
   return (
-    <Ternary condition={view === "macros"}>
-      <Then>
-        <MacroManagerPage onBack={handleBackFromMacros} />
-      </Then>
-      <Else>
-        <KeyRemapperPage onNavigateMacros={() => setView("macros")} />
-      </Else>
-    </Ternary>
+    <Switch>
+      <Case when={view === "macros"}>
+        <MacroManagerPage onBack={handleBackToRemapper} />
+      </Case>
+      <Case when={view === "trackpad-test"}>
+        <TrackpadTraceTestPage onBack={handleBackToRemapper} />
+      </Case>
+      <Default>
+        <KeyRemapperPage
+          onNavigateMacros={() => setView("macros")}
+          onNavigateTrackpadTest={() => setView("trackpad-test")}
+        />
+      </Default>
+    </Switch>
   );
 }

@@ -1,0 +1,11 @@
+{
+  "build-verifier": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node scripts/verify-build.js",
+        "timeout": 60
+      }
+    ]
+  }
+}

@@ -1,4 +1,3 @@
-import type { Layer } from "@/types/remapConfig";
 import { Layers } from "lucide-react";
 import { EditorSection } from "@/components/molecules/EditorSection";
 import { LayerSelector } from "@/components/molecules/forms/LayerSelector";
@@ -7,6 +6,7 @@ import type {
   LayerMomentaryBindingState,
   LayerToggleBindingState,
 } from "@/models/bindingStateModel";
+import type { Layer } from "@/types/remapConfig";
 import { getLayerDescription } from "@/utils/getLayerDescription";
 
 interface LayerActionSettingsProps {

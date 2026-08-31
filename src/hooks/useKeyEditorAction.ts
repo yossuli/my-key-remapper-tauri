@@ -1,11 +1,11 @@
 // 保存・削除アクションのフック
 
-import type { Action, TriggerType } from "@/types/remapConfig";
 import { useCallback, useMemo, useState } from "react";
 import {
   type BindingState,
   convertBindingStateToAction,
 } from "@/models/bindingStateModel";
+import type { Action, TriggerType } from "@/types/remapConfig";
 
 export interface UseKeyEditorActionsProps {
   state: BindingState;

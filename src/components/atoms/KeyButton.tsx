@@ -1,12 +1,8 @@
-import { KEY_SIZE_REM } from "@/constants/index";
-import type {
-  Action,
-  KeyBinding,
-  TriggerType,
-} from "@/types/remapConfig";
 import { motion } from "framer-motion";
 import { WithRemoveBadge } from "@/components/atoms/RemoveBadge";
+import { KEY_SIZE_REM } from "@/constants/index";
 import type { KeyDefinition, LayoutType } from "@/types";
+import type { Action, KeyBinding, TriggerType } from "@/types/remapConfig";
 import { cn } from "@/utils/cn";
 import { getKeyLabel } from "@/utils/getKeyLabel";
 

@@ -1,4 +1,3 @@
-import type { Action, MacroDef } from "@/types/remapConfig";
 import { ArrowLeft, Plus, Save } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button";
@@ -10,6 +9,7 @@ import { UnifiedActionEditor } from "@/components/organisms/editor/UnifiedAction
 import { HStack, VStack } from "@/components/template/Flex";
 import { ModalLayout } from "@/components/template/ModalLayout";
 import { useLayerState } from "@/hooks/api/useLayerState";
+import type { Action, MacroDef } from "@/types/remapConfig";
 import type { ActionSummaryHandlers, IdentifiedAction } from "./types";
 import { toAction, toIdentifiedAction } from "./utils";
 

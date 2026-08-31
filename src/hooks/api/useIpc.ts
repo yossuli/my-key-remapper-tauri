@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef } from "react";
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
-import { listen, UnlistenFn, emit as tauriEmit } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useRef } from "react";
 
 type IpcCallback = (payload: any) => void;
 
@@ -28,7 +28,7 @@ export function useIpc(): UseIpcReturn {
     async (channel: string, payload?: any) => {
       // In Tauri, we can emit events to the backend, or just invoke a command.
       // If we are calling a rust command that does not return, we can use invoke.
-      // Let's map send to invoke if we assume it's a backend command, 
+      // Let's map send to invoke if we assume it's a backend command,
       // or emit if it's an event. For compatibility we'll use invoke.
       if (payload) {
         await tauriInvoke(channel, payload);
@@ -44,18 +44,15 @@ export function useIpc(): UseIpcReturn {
       channel: string,
       // biome-ignore lint/suspicious/noExplicitAny: IPC引数は動的
       args?: Record<string, any>
-    ): Promise<T | undefined> => {
-      return await tauriInvoke<T>(channel, args);
-    },
+    ): Promise<T | undefined> => await tauriInvoke<T>(channel, args),
     []
   );
 
   const on = useCallback(
-    async (channel: string, callback: IpcCallback) => {
-      return await listen(channel, (event) => {
+    async (channel: string, callback: IpcCallback) =>
+      await listen(channel, (event) => {
         callback(event.payload);
-      });
-    },
+      }),
     []
   );
 

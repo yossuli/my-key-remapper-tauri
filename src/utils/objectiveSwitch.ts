@@ -36,10 +36,7 @@ type MergeCallbackFns<
   V,
   W extends string,
 > = {
-  [K in W]: (
-    s: U extends { [_ in T]: Split<K> } ? U : never,
-    k: Split<K>
-  ) => V;
+  [K in W]: (s: U extends { [_ in T]: Split<K> } ? U : never, k: Split<K>) => V;
 };
 
 export const objectiveMergeSwitch = <

@@ -1,5 +1,3 @@
-import { KEYBOARD_LAYOUT, SWITCH_LAYOUT_RULE } from "@/constants";
-import type { TriggerType } from "@/types/remapConfig";
 import { useMemo, useState } from "react";
 import { RemapDisabler } from "@/components/control/RemapDisabler";
 import { Show } from "@/components/control/Show";
@@ -18,12 +16,14 @@ import {
   Side,
 } from "@/components/template/MainLayout";
 import { ModalLayout } from "@/components/template/ModalLayout";
+import { KEYBOARD_LAYOUT, SWITCH_LAYOUT_RULE } from "@/constants";
 import {
   type UseLayerStateReturn,
   useLayerState,
 } from "@/hooks/api/useLayerState";
 import { useRemapControl } from "@/hooks/api/useRemapControl";
 import type { LayoutType } from "@/types";
+import type { TriggerType } from "@/types/remapConfig";
 
 // --- 型定義 ---
 
@@ -36,9 +36,13 @@ export interface MappingActions {
 
 interface KeyRemapperPageProps {
   onNavigateMacros: () => void;
+  onNavigateTrackpadTest?: () => void;
 }
 
-export function KeyRemapperPage({ onNavigateMacros }: KeyRemapperPageProps) {
+export function KeyRemapperPage({
+  onNavigateMacros,
+  onNavigateTrackpadTest,
+}: KeyRemapperPageProps) {
   // カスタムフックでロジックを分離
   const {
     layers,
@@ -84,6 +88,7 @@ export function KeyRemapperPage({ onNavigateMacros }: KeyRemapperPageProps) {
             isActive={isActive} // 🆕 → 🔥 (E. App Header Control)
             onOpenMacros={onNavigateMacros}
             onOpenSettings={() => setIsSettingsOpen(true)} // 🆕 → 🔥 (E. App Header Control)
+            onOpenTrackpadTest={onNavigateTrackpadTest}
             onToggleActive={toggleActive} // 🆕 → 🔥 (E. App Header Control)
             onToggleSimpleMode={() => setSimpleMode((prev) => !prev)} // 🆕 → 🔥 (E. App Header Control)
             simpleMode={simpleMode} // 🆕 → 🔥 (E. App Header Control)

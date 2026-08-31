@@ -107,6 +107,17 @@ export interface CursorRestoreAction {
   type: "cursorRestore";
 }
 
+/** トラックパッド/マウス スクロールモード アクション (キー押下中にスクロール化) */
+export interface ScrollModeAction {
+  type: "scrollMode";
+  /** スクロール感度 (0.2 〜 3.0, デフォルト 1.0) */
+  sensitivity?: number;
+  /** スクロール方向反転 (Natural Scroll) */
+  invert?: boolean;
+  /** スクロール軸 ("both" | "vertical" | "horizontal") */
+  axis?: "both" | "vertical" | "horizontal";
+}
+
 /** すべてのアクション種別 */
 export type Action =
   | RemapAction
@@ -117,6 +128,7 @@ export type Action =
   | MouseClickAction
   | CursorSaveAction
   | CursorRestoreAction
+  | ScrollModeAction
   | DelayAction
   | MacroAction;
 // | PassthroughAction;

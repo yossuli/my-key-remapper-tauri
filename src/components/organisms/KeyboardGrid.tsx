@@ -1,12 +1,12 @@
-import { KEYBOARD_LAYOUT_BASE, KEYBOARD_LAYOUT_SHIFT } from "@/constants";
-import type { KeyBinding, TriggerType } from "@/types/remapConfig";
 import { KeyButton } from "@/components/atoms/KeyButton";
 import { Mapped } from "@/components/control/Mapped";
 import type {
   LayerState,
   MappingActions,
 } from "@/components/pages/KeyRemapperPage";
+import { KEYBOARD_LAYOUT_BASE, KEYBOARD_LAYOUT_SHIFT } from "@/constants";
 import type { KeyboardLayout, LayoutType } from "@/types";
+import type { KeyBinding, TriggerType } from "@/types/remapConfig";
 
 interface KeyboardGridProps {
   bindings: Record<number, KeyBinding[]>;

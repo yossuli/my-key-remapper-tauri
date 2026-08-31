@@ -1,9 +1,9 @@
-import type { Action, TriggerType } from "@/types/remapConfig";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { UseLayerStateReturn } from "@/hooks/api/useLayerState";
 import { useKeyEventInput } from "@/hooks/ui/useKeyEventInput";
 import { useKeyEditorActions } from "@/hooks/useKeyEditorAction";
 import type { KeyboardLayout } from "@/types";
+import type { Action, TriggerType } from "@/types/remapConfig";
 import { getNextKeyVk } from "@/utils/getNextKeyVk";
 
 export interface UseQuickRemapOptions {
