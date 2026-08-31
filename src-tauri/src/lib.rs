@@ -3,6 +3,8 @@ use serde_json::Value;
 #[cfg(windows)]
 mod hook;
 #[cfg(windows)]
+pub mod raw_input;
+#[cfg(windows)]
 pub mod key_processor;
 pub mod state_machine;
 
@@ -361,7 +363,10 @@ pub fn run() {
             app.manage(ConfigState { config: ArcSwap::from(Arc::new(config_to_use)) });
 
             #[cfg(windows)]
-            hook::setup_hook(app.handle().clone());
+            {
+                hook::setup_hook(app.handle().clone());
+                raw_input::start_raw_input_listener();
+            }
 
             Ok(())
         })
@@ -391,7 +396,10 @@ pub fn run() {
     app.run(|_app_handle, event| match event {
         tauri::RunEvent::ExitRequested { .. } => {
             #[cfg(windows)]
-            hook::teardown_hook();
+            {
+                raw_input::stop_raw_input_listener();
+                hook::teardown_hook();
+            }
         }
         _ => {}
     });

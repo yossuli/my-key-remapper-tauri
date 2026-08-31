@@ -1,9 +1,9 @@
 use std::sync::atomic::{AtomicPtr, AtomicBool, AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Emitter};
-use windows::Win32::Foundation::{LRESULT, WPARAM, LPARAM, POINT};
+use windows::Win32::Foundation::{LRESULT, WPARAM, LPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
-    SetWindowsHookExW, UnhookWindowsHookEx, CallNextHookEx, GetCursorPos,
+    SetWindowsHookExW, UnhookWindowsHookEx, CallNextHookEx,
     WH_KEYBOARD_LL, WH_MOUSE_LL, HHOOK, KBDLLHOOKSTRUCT, MSLLHOOKSTRUCT
 };
 use tauri::Manager;
@@ -22,8 +22,7 @@ pub static SCROLL_SENSITIVITY_PERCENT: AtomicU32 = AtomicU32::new(100);
 pub static SCROLL_INVERT: AtomicBool = AtomicBool::new(false);
 pub static SCROLL_AXIS_MODE: AtomicU32 = AtomicU32::new(0); // 0=both, 1=vertical, 2=horizontal
 
-static SCROLL_LAST_POS: Mutex<Option<(i32, i32)>> = Mutex::new(None);
-static SCROLL_ACCUM: Mutex<(f64, f64)> = Mutex::new((0.0, 0.0));
+pub static SCROLL_ACCUM: Mutex<(f64, f64)> = Mutex::new((0.0, 0.0));
 
 static LAST_MOUSE_POS: Mutex<Option<(i32, i32)>> = Mutex::new(None);
 
@@ -39,9 +38,6 @@ pub fn set_scroll_mode_state(active: bool, sensitivity: f64, invert: bool, axis:
     SCROLL_AXIS_MODE.store(axis_code, Ordering::Relaxed);
     SCROLL_MODE_ACTIVE.store(active, Ordering::SeqCst);
 
-    if let Ok(mut last_pos) = SCROLL_LAST_POS.lock() {
-        *last_pos = None;
-    }
     if let Ok(mut acc) = SCROLL_ACCUM.lock() {
         *acc = (0.0, 0.0);
     }
@@ -118,70 +114,11 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) 
         let is_injected = (ms_struct.flags & 0x01) != 0;
 
         if !is_injected {
-            // 1. スクロールモード処理（キー押下中のスクロール変換 & カーソル移動ブロック）
+            // 1. スクロールモード中のカーソル移動ブロック（Raw Input で変位スクロール処理）
             let remap_enabled = REMAP_ENABLED.load(Ordering::Relaxed);
             let scroll_active = SCROLL_MODE_ACTIVE.load(Ordering::Relaxed);
 
             if remap_enabled && scroll_active && msg == WM_MOUSEMOVE {
-                let target_x = ms_struct.pt.x;
-                let target_y = ms_struct.pt.y;
-
-                let mut current_pt = POINT { x: target_x, y: target_y };
-                unsafe {
-                    let _ = GetCursorPos(&mut current_pt);
-                }
-
-                let (dx, dy) = {
-                    let mut last_guard = SCROLL_LAST_POS.lock().unwrap();
-                    if let Some((lx, ly)) = *last_guard {
-                        *last_guard = Some((target_x, target_y));
-                        let d_target_x = target_x - lx;
-                        let d_target_y = target_y - ly;
-                        if d_target_x != 0 || d_target_y != 0 {
-                            (d_target_x, d_target_y)
-                        } else {
-                            (target_x - current_pt.x, target_y - current_pt.y)
-                        }
-                    } else {
-                        *last_guard = Some((target_x, target_y));
-                        (target_x - current_pt.x, target_y - current_pt.y)
-                    }
-                };
-
-                if dx != 0 || dy != 0 {
-                    let sens = (SCROLL_SENSITIVITY_PERCENT.load(Ordering::Relaxed) as f64) / 100.0;
-                    let invert = SCROLL_INVERT.load(Ordering::Relaxed);
-                    let axis = SCROLL_AXIS_MODE.load(Ordering::Relaxed);
-
-                    // 1px 移動あたり 24.0 WHEEL 単位 (約5pxで1ホイール120)
-                    let raw_wheel_y = if invert { dy as f64 } else { -(dy as f64) } * sens * 24.0;
-                    let raw_wheel_x = (dx as f64) * sens * 24.0;
-
-                    let (wheel_y, wheel_x) = match axis {
-                        1 => (raw_wheel_y, 0.0), // vertical only
-                        2 => (0.0, raw_wheel_x), // horizontal only
-                        _ => (raw_wheel_y, raw_wheel_x), // both
-                    };
-
-                    let mut acc_guard = SCROLL_ACCUM.lock().unwrap();
-                    acc_guard.0 += wheel_x;
-                    acc_guard.1 += wheel_y;
-
-                    let dispatch_x = acc_guard.0 as i32;
-                    let dispatch_y = acc_guard.1 as i32;
-
-                    if dispatch_x != 0 || dispatch_y != 0 {
-                        acc_guard.0 -= dispatch_x as f64;
-                        acc_guard.1 -= dispatch_y as f64;
-                        drop(acc_guard);
-
-                        // 非同期タスクで SendInput を発行 (フックを一切ブロックさせない)
-                        tauri::async_runtime::spawn(async move {
-                            crate::key_processor::utils::send_mouse_wheel(dispatch_y, dispatch_x);
-                        });
-                    }
-                }
-
                 // LRESULT(1) でカーソル移動をキャンセル（その場に固定）
                 return windows::Win32::Foundation::LRESULT(1);
             }
