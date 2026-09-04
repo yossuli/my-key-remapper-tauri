@@ -172,6 +172,8 @@ export interface Layer {
   activeKeys?: number[];
   /** 下位レイヤーの defaultModifiers と activeKeys を継承して合成するかどうか（デフォルト true） */
   inheritModifiers?: boolean;
+  /** もともとのキー（レイヤーを発火させたトリガーキー）の長押しを無効化しない（OSに通す） */
+  passthroughTriggerKey?: boolean;
 }
 
 // =====================================
@@ -229,6 +231,7 @@ export const DEFAULT_REMAP_CONFIG: RemapConfig = {
       id: "shift",
       bindings: {},
       defaultModifiers: { shift: true },
+      passthroughTriggerKey: true,
     },
   ],
   macros: [

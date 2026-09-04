@@ -39,6 +39,7 @@ export function LayerSettingsModal({
   });
 
   const [inheritModifiers, setInheritModifiers] = useState(true);
+  const [passthroughTriggerKey, setPassthroughTriggerKey] = useState(false);
 
   // 初期化
   useEffect(() => {
@@ -50,6 +51,7 @@ export function LayerSettingsModal({
         win: !!layer.defaultModifiers?.win,
       });
       setInheritModifiers(layer.inheritModifiers ?? true);
+      setPassthroughTriggerKey(layer.passthroughTriggerKey ?? false);
     }
   }, [layer]);
 
@@ -75,6 +77,12 @@ export function LayerSettingsModal({
     onUpdate(layerId, { inheritModifiers: newVal });
   };
 
+  const togglePassthroughTriggerKey = () => {
+    const newVal = !passthroughTriggerKey;
+    setPassthroughTriggerKey(newVal);
+    onUpdate(layerId, { passthroughTriggerKey: newVal });
+  };
+
   const handleUpdateActiveKeys = (newKeys: number[]) => {
     if (layerId) {
       onUpdate(layerId, { activeKeys: newKeys });
@@ -90,27 +98,49 @@ export function LayerSettingsModal({
       {() => (
         <VStack className="w-[400px] p-4" gap={6}>
           {/* Default Modifiers Section */}
-          <VStack gap={2}>
-            <h3 className="font-semibold text-sm">Default Modifiers</h3>
-            <div className="flex gap-4">
-              {Object.keys(modifiers).map((mod) => (
-                <div className="flex items-center gap-2" key={mod}>
-                  <Checkbox
-                    checked={modifiers[mod as keyof typeof modifiers]}
-                    id={`mod-${mod}`}
-                    onCheckedChange={() =>
-                      toggleModifier(mod as keyof typeof modifiers)
-                    }
-                  />
-                  <Label
-                    className="cursor-pointer capitalize"
-                    htmlFor={`mod-${mod}`}
-                  >
-                    {mod}
-                  </Label>
-                </div>
-              ))}
-            </div>
+          <VStack gap={3}>
+            <VStack gap={2}>
+              <h3 className="font-semibold text-sm">Default Modifiers</h3>
+              <div className="flex gap-4">
+                {Object.keys(modifiers).map((mod) => (
+                  <div className="flex items-center gap-2" key={mod}>
+                    <Checkbox
+                      checked={modifiers[mod as keyof typeof modifiers]}
+                      id={`mod-${mod}`}
+                      onCheckedChange={() =>
+                        toggleModifier(mod as keyof typeof modifiers)
+                      }
+                    />
+                    <Label
+                      className="cursor-pointer capitalize"
+                      htmlFor={`mod-${mod}`}
+                    >
+                      {mod}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </VStack>
+
+            {/* Trigger Key Passthrough Option */}
+            <VStack gap={1}>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={passthroughTriggerKey}
+                  id="passthrough-trigger-key"
+                  onCheckedChange={togglePassthroughTriggerKey}
+                />
+                <Label
+                  className="cursor-pointer text-sm"
+                  htmlFor="passthrough-trigger-key"
+                >
+                  もともとのキーの長押しを無効化しない
+                </Label>
+              </div>
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                ONにすると、Shiftキー等の長押しをOSにそのまま通し、Shift+クリックやアプリ固有の操作を可能にします。リマップ実行時は一時的に無効化されます。
+              </p>
+            </VStack>
           </VStack>
 
           {/* Layer Inheritance Section */}

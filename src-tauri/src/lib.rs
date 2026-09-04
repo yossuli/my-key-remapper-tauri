@@ -34,6 +34,8 @@ pub struct Layer {
     pub bindings: HashMap<String, Vec<Binding>>,
     #[serde(default)]
     pub default_modifiers: Option<Value>,
+    #[serde(default)]
+    pub passthrough_trigger_key: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -75,7 +77,8 @@ pub fn get_default_config() -> Config {
             {
                 "id": "shift",
                 "bindings": {},
-                "defaultModifiers": {"shift": true}
+                "defaultModifiers": {"shift": true},
+                "passthroughTriggerKey": true
             }
         ],
         "macros": [
@@ -236,6 +239,7 @@ fn add_layer(layer_id: String, state: State<'_, ConfigState>) {
             id: layer_id.clone(),
             bindings: HashMap::new(),
             default_modifiers: None,
+            passthrough_trigger_key: None,
         });
         config.layer_order.push(layer_id);
         save_current_config(&config, &state);
@@ -283,6 +287,9 @@ fn update_layer(layer_id: String, updates: Value, state: State<'_, ConfigState>)
     if let Some(layer) = config.layers.iter_mut().find(|l| l.id == layer_id) {
         if let Some(default_modifiers) = updates.get("defaultModifiers") {
             layer.default_modifiers = Some(default_modifiers.clone());
+        }
+        if let Some(passthrough) = updates.get("passthroughTriggerKey").and_then(|v| v.as_bool()) {
+            layer.passthrough_trigger_key = Some(passthrough);
         }
         if let Some(new_id) = updates.get("id").and_then(|v| v.as_str()) {
             if new_id != layer_id {

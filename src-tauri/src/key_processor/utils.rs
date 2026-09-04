@@ -240,11 +240,86 @@ pub fn apply_layer_modifiers(old_layers: &[String], new_layers: &[String], confi
     let old_mods = compute_active_modifiers(old_layers, config);
     let new_mods = compute_active_modifiers(new_layers, config);
 
+    let passthrough_keys = {
+        let state = get_state().lock().unwrap();
+        state.passthrough_trigger_keys.clone()
+    };
+
     for &modifier in new_mods.difference(&old_mods) {
-        send_key_raw(modifier, false); // Send DOWN for new modifiers
+        let already_physically_down = match modifier {
+            VK_LSHIFT => passthrough_keys.contains(&160) || passthrough_keys.contains(&161),
+            VK_LCONTROL => passthrough_keys.contains(&162) || passthrough_keys.contains(&163),
+            VK_LMENU => passthrough_keys.contains(&164) || passthrough_keys.contains(&165),
+            VK_LWIN => passthrough_keys.contains(&91) || passthrough_keys.contains(&92),
+            _ => passthrough_keys.contains(&modifier),
+        };
+
+        if !already_physically_down {
+            send_key_raw(modifier, false); // Send DOWN for new modifiers
+        }
     }
     for &modifier in old_mods.difference(&new_mods) {
         send_key_raw(modifier, true);  // Send UP for removed modifiers
+    }
+}
+
+/// リマップ対象のキー（target_vks）に含まれない、現在アクティブな修飾キーおよびパススルートリガーキーを取得し、一時的にUPを送信する
+pub fn suppress_active_modifiers_for_remap(physical_vk: u16, target_vks: &[u16], config: &Config) -> Vec<u16> {
+    let (active_layers, passthrough_keys) = {
+        let state = get_state().lock().unwrap();
+        (state.active_layers.clone(), state.passthrough_trigger_keys.clone())
+    };
+
+    let active_mods = compute_active_modifiers(&active_layers, config);
+    let mut to_suppress = Vec::new();
+
+    // 1. DefaultModifiers から、リマップ先キーに含まれていないものを収集
+    for &m in &active_mods {
+        let is_target_mod = target_vks.contains(&m)
+            || (m == VK_LSHIFT && target_vks.contains(&161))
+            || (m == VK_LCONTROL && target_vks.contains(&163))
+            || (m == VK_LMENU && target_vks.contains(&165))
+            || (m == VK_LWIN && target_vks.contains(&92));
+
+        if !is_target_mod && !to_suppress.contains(&m) {
+            to_suppress.push(m);
+        }
+    }
+
+    // 2. パススルートリガーキーから、リマップ先キーに含まれていないものを収集
+    for &pt_vk in &passthrough_keys {
+        if pt_vk != physical_vk {
+            let is_target_mod = target_vks.contains(&pt_vk)
+                || (is_shift(pt_vk) && target_vks.iter().any(|&k| is_shift(k)))
+                || (is_ctrl(pt_vk) && target_vks.iter().any(|&k| is_ctrl(k)))
+                || (is_alt(pt_vk) && target_vks.iter().any(|&k| is_alt(k)))
+                || (is_win(pt_vk) && target_vks.iter().any(|&k| is_win(k)));
+
+            if !is_target_mod && !to_suppress.contains(&pt_vk) {
+                to_suppress.push(pt_vk);
+            }
+        }
+    }
+
+    // 一時的に UP を送信して無効化
+    for &m in &to_suppress {
+        log::debug!("suppress modifier before remap: vk={}", m);
+        send_key_raw(m, true);
+    }
+
+    to_suppress
+}
+
+fn is_shift(vk: u16) -> bool { vk == 16 || vk == 160 || vk == 161 }
+fn is_ctrl(vk: u16) -> bool { vk == 17 || vk == 162 || vk == 163 }
+fn is_alt(vk: u16) -> bool { vk == 18 || vk == 164 || vk == 165 }
+fn is_win(vk: u16) -> bool { vk == 91 || vk == 92 }
+
+/// 一時的にUPされていた修飾キー・トリガーキーを再度DOWNにして復元する
+pub fn restore_suppressed_modifiers(suppressed: &[u16]) {
+    for &m in suppressed {
+        log::debug!("restore modifier after remap: vk={}", m);
+        send_key_raw(m, false);
     }
 }
 
@@ -432,6 +507,37 @@ mod tests {
             let state = get_state().lock().unwrap();
             // 物理的に押されていない dummy_vk は pressed_vks から自己修復で解放されること
             assert!(!state.pressed_vks.contains_key(&dummy_vk));
+        }
+    }
+
+    #[test]
+    fn test_suppress_active_modifiers_for_remap() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        let config = crate::get_default_config();
+
+        // 1. Shiftレイヤーがアクティブな状態で、LeftArrow(0x25)へリマップ
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string(), "shift".to_string()];
+            state.passthrough_trigger_keys.insert(160); // VK_LSHIFT
+        }
+
+        let target_vks = vec![0x25]; // Left arrow (Shiftは含まない)
+        let suppressed = suppress_active_modifiers_for_remap(0x48, &target_vks, &config);
+
+        // Shift (VK_LSHIFT = 160) が抑制対象として取得されていること
+        assert!(suppressed.contains(&160));
+
+        // 2. リマップ先キーにShiftが含まれている場合は抑制対象にならないこと
+        let target_vks_with_shift = vec![160, 0x25];
+        let suppressed_with_shift = suppress_active_modifiers_for_remap(0x48, &target_vks_with_shift, &config);
+        assert!(!suppressed_with_shift.contains(&160));
+
+        // クリーンアップ
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()];
+            state.passthrough_trigger_keys.clear();
         }
     }
 }
