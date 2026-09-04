@@ -28,6 +28,17 @@ export function useMacros() {
 
   useEffect(() => {
     fetchMacros();
+
+    const handleProfileChange = () => {
+      fetchMacros();
+      setEditingId(null);
+      setIsAddingNew(false);
+    };
+
+    window.addEventListener("profile-changed", handleProfileChange);
+    return () => {
+      window.removeEventListener("profile-changed", handleProfileChange);
+    };
   }, [fetchMacros]);
 
   // Handlers

@@ -22,6 +22,10 @@ export interface UseProfileStateReturn {
   clearError: () => void;
 }
 
+function notifyProfileChanged() {
+  window.dispatchEvent(new CustomEvent("profile-changed"));
+}
+
 export function useProfileState(
   options?: UseProfileStateOptions
 ): UseProfileStateReturn {
@@ -65,6 +69,7 @@ export function useProfileState(
         setError(null);
         await invoke("load-profile", { profileName });
         setActiveProfile(profileName);
+        notifyProfileChanged();
         await options?.onProfileChanged?.();
         return true;
       } catch (err) {
@@ -117,6 +122,7 @@ export function useProfileState(
       if (res) {
         setProfiles(res.profiles);
         setActiveProfile(res.activeProfile);
+        notifyProfileChanged();
         await options?.onProfileChanged?.();
         return true;
       }
@@ -142,6 +148,7 @@ export function useProfileState(
       if (res) {
         setProfiles(res.profiles);
         setActiveProfile(res.activeProfile);
+        notifyProfileChanged();
         await options?.onProfileChanged?.();
         return true;
       }
@@ -185,6 +192,7 @@ export function useProfileState(
         setError(null);
         await invoke("create-profile", { profileName });
         await refreshProfiles();
+        notifyProfileChanged();
         await options?.onProfileChanged?.();
         return true;
       } catch (err) {
@@ -211,6 +219,7 @@ export function useProfileState(
         if (res) {
           setProfiles(res.profiles);
           setActiveProfile(res.activeProfile);
+          notifyProfileChanged();
         }
         await options?.onProfileChanged?.();
         return true;
