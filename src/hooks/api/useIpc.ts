@@ -2,6 +2,7 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef } from "react";
 
+// biome-ignore lint/suspicious/noExplicitAny: IPCコールバック引数は動的
 type IpcCallback = (payload: any) => void;
 
 interface UseIpcReturn {

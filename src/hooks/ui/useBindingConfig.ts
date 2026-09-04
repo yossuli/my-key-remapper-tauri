@@ -7,8 +7,9 @@ import {
   createInitialBindingState,
   DEFAULT_REPEAT_DELAY_MS,
   DEFAULT_REPEAT_INTERVAL_MS,
+  DEFAULT_SCROLL_SENSITIVITY,
 } from "@/models/bindingStateModel";
-import type { Action, TriggerType } from "@/types/remapConfig";
+import type { Action, KeyBinding, TriggerType } from "@/types/remapConfig";
 
 export interface RepeatConfig {
   enabled: boolean;
@@ -62,6 +63,16 @@ export interface UseBindingConfigReturn {
   };
 }
 
+function extractTimingConfig(bindings?: KeyBinding[]) {
+  const holdBinding = bindings?.find((b) => b.trigger === "hold");
+  const doubleTapBinding = bindings?.find((b) => b.trigger === "doubleTap");
+  return {
+    holdThresholdMs: holdBinding?.timingMs,
+    tapIntervalMs: doubleTapBinding?.timingMs,
+    interruptBehavior: holdBinding?.interruptBehavior,
+  };
+}
+
 export function useBindingConfig({
   targetVk,
   layerId,
@@ -106,36 +117,12 @@ export function useBindingConfig({
         const binding = bindings?.find((b) => b.trigger === t);
 
         if (binding) {
-          const partial = actionToBindingState(binding.action);
-          setState(partial);
-          setExistingTiming((prev) => ({
-            ...prev,
-            holdThresholdMs:
-              t === "hold" ? binding.timingMs : prev.holdThresholdMs,
-            tapIntervalMs:
-              t === "doubleTap" ? binding.timingMs : prev.tapIntervalMs,
-            interruptBehavior:
-              t === "hold" ? binding.interruptBehavior : prev.interruptBehavior,
-          }));
+          setState(actionToBindingState(binding.action));
         } else {
           setState(createInitialBindingState());
         }
 
-        const holdTiming = bindings?.find(
-          (b) => b.trigger === "hold"
-        )?.timingMs;
-        const doubleTapTiming = bindings?.find(
-          (b) => b.trigger === "doubleTap"
-        )?.timingMs;
-        const interruptBehavior = bindings?.find(
-          (b) => b.trigger === "hold"
-        )?.interruptBehavior;
-
-        setExistingTiming({
-          holdThresholdMs: holdTiming,
-          tapIntervalMs: doubleTapTiming,
-          interruptBehavior,
-        });
+        setExistingTiming(extractTimingConfig(bindings));
       } catch (err) {
         console.error("Failed to load binding config:", err);
       } finally {
@@ -210,16 +197,17 @@ export function useBindingConfig({
     setState({ actionType: "cursorRestore" });
   }, []);
 
-  const setScrollModeAction = useCallback<
-    ActionSetters["setScrollModeAction"]
-  >((sensitivity, invert, axis) => {
-    setState({
-      actionType: "scrollMode",
-      sensitivity: sensitivity ?? 1.0,
-      invert: invert ?? false,
-      axis: axis ?? "both",
-    });
-  }, []);
+  const setScrollModeAction = useCallback<ActionSetters["setScrollModeAction"]>(
+    (sensitivity, invert, axis) => {
+      setState({
+        actionType: "scrollMode",
+        sensitivity: sensitivity ?? DEFAULT_SCROLL_SENSITIVITY,
+        invert: invert ?? false,
+        axis: axis ?? "both",
+      });
+    },
+    []
+  );
 
   const setMacroAction = useCallback<ActionSetters["setMacroAction"]>(
     (macroId) => {

@@ -2,11 +2,7 @@
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "extends": ["ultracite/core", "ultracite/react"],
   "files": {
-    "includes": [
-      "!!src/renderer/src/components/ui",
-      "!!electron.vite.config.*.mjs",
-      "!!electron.vite.config.ts"
-    ]
+    "includes": ["!!src/components/ui", "!!scripts", "!!.agents"]
   },
   "linter": {
     "rules": {

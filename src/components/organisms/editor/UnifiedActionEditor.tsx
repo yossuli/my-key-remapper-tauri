@@ -58,6 +58,9 @@ export interface UnifiedActionEditorProps {
   };
 }
 
+const GAP_COMPACT = 4;
+const GAP_DEFAULT = 6;
+
 export function UnifiedActionEditor({
   initialAction,
   initialBindingState, // May be passed directly if no targetVk/layerId or prefetched
@@ -205,16 +208,16 @@ export function UnifiedActionEditor({
   }
 
   const { actionType } = state;
+  const containerClassName =
+    targetVk !== undefined
+      ? "px-6 focus:outline-none"
+      : "h-full min-h-[400px] p-6 focus:outline-none";
+  const gap = targetVk !== undefined ? GAP_COMPACT : GAP_DEFAULT;
 
   return (
     <VStack
-      className={
-        targetVk
-          ? "px-6 focus:outline-none"
-          : "h-full min-h-[400px] p-6 focus:outline-none"
-      }
-      gap={targetVk ? 4 : 6}
-      // biome-ignore lint/style/noMagicNumbers: UIのgapは適切な値なので許容
+      className={containerClassName}
+      gap={gap}
       onKeyDown={onKeyDown}
       onKeyUp={onKeyUp}
       ref={vstackRef}

@@ -1,7 +1,10 @@
-import { MousePointer, Sliders } from "lucide-react";
+import { MousePointer } from "lucide-react";
 import { EditorSection } from "@/components/molecules/EditorSection";
 import type { ActionSetters } from "@/hooks/ui/useBindingConfig";
-import type { ScrollModeBindingState } from "@/models/bindingStateModel";
+import {
+  DEFAULT_SCROLL_SENSITIVITY,
+  type ScrollModeBindingState,
+} from "@/models/bindingStateModel";
 
 interface ScrollActionSettingsProps {
   state: ScrollModeBindingState;
@@ -12,7 +15,7 @@ export function ScrollActionSettings({
   state,
   actionSetters,
 }: ScrollActionSettingsProps) {
-  const sensitivity = state.sensitivity ?? 1.0;
+  const sensitivity = state.sensitivity ?? DEFAULT_SCROLL_SENSITIVITY;
   const invert = state.invert ?? false;
   const axis = state.axis ?? "both";
 
@@ -53,9 +56,15 @@ export function ScrollActionSettings({
         {/* 2. 軸 & 方向反転 */}
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
-            <label className="text-slate-400 text-xs">スクロール軸</label>
+            <label
+              className="text-slate-400 text-xs"
+              htmlFor="scroll-axis-select"
+            >
+              スクロール軸
+            </label>
             <select
               className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-slate-200 text-xs focus:border-pink-500 focus:outline-none"
+              id="scroll-axis-select"
               onChange={(e) =>
                 actionSetters.setScrollModeAction(
                   sensitivity,
@@ -72,7 +81,7 @@ export function ScrollActionSettings({
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-slate-400 text-xs">スクロール方向</label>
+            <span className="text-slate-400 text-xs">スクロール方向</span>
             <button
               className={`rounded-lg border px-3 py-1.5 font-medium text-xs transition-colors ${
                 invert

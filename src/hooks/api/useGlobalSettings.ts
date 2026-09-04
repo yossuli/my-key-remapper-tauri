@@ -24,7 +24,9 @@ export function useGlobalSettings(): UseGlobalSettingsReturn {
   useEffect(() => {
     const loadSettings = async (): Promise<void> => {
       try {
-        const data = await invoke<any>("get-mappings");
+        const data = await invoke<{ globalSettings?: GlobalSettings }>(
+          "get-mappings"
+        );
         // globalSettingsが存在しない場合はデフォルト値を使用（後方互換性）
         setGlobalSettings(
           data?.globalSettings ?? DEFAULT_REMAP_CONFIG.globalSettings

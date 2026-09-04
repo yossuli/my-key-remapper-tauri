@@ -7,6 +7,7 @@ import { RichText } from "@/components/atoms/RichText";
 import { Else, Ternary, Then } from "@/components/control/Ternary";
 import { HStack } from "@/components/template/Flex";
 import { useMacros } from "@/hooks/api/useMacros";
+import { DEFAULT_SCROLL_SENSITIVITY } from "@/models/bindingStateModel";
 import type { Action } from "@/types/remapConfig";
 import { objectiveDiscriminantSwitch } from "@/utils/objectiveSwitch";
 import type { ActionSummaryHandlers } from "../organisms/macro/types";
@@ -86,7 +87,7 @@ export function ActionItem({
       cursorSave: () => "カーソル位置記憶",
       cursorRestore: () => "カーソル位置復元",
       scrollMode: (a) =>
-        `トラックパッドスクロール (感度: **${(a.sensitivity ?? 1.0).toFixed(1)}x**${
+        `トラックパッドスクロール (感度: **${(a.sensitivity ?? DEFAULT_SCROLL_SENSITIVITY).toFixed(1)}x**${
           a.invert ? ", 反転" : ""
         })`,
       none: () => "((なし))",

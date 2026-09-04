@@ -1,5 +1,4 @@
 import { execSync } from "node:child_process";
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,10 +16,11 @@ async function main() {
     execSync("npm run typecheck", {
       cwd: projectRoot,
       stdio: "pipe",
-      timeout: 30000,
+      timeout: 30_000,
     });
   } catch (err) {
-    const output = (err.stdout?.toString() || "") + (err.stderr?.toString() || "");
+    const output =
+      (err.stdout?.toString() || "") + (err.stderr?.toString() || "");
     errors.push(`【TypeScript 型エラー】\n${output.trim()}`);
   }
 
@@ -31,10 +31,11 @@ async function main() {
     execSync(cmd, {
       cwd: projectRoot,
       stdio: "pipe",
-      timeout: 45000,
+      timeout: 45_000,
     });
   } catch (err) {
-    const output = (err.stdout?.toString() || "") + (err.stderr?.toString() || "");
+    const output =
+      (err.stdout?.toString() || "") + (err.stderr?.toString() || "");
     errors.push(`【Rust Cargo Check エラー】\n${output.trim()}`);
   }
 

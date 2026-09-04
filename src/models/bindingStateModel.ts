@@ -1,6 +1,8 @@
 import type { Action, ActionType } from "@/types/remapConfig";
 import { objectiveDiscriminantSwitch } from "@/utils/objectiveSwitch";
 
+export const DEFAULT_SCROLL_SENSITIVITY = 1.0;
+
 export interface RemapBindingState {
   actionType: "remap";
   targetKeys: number[];
@@ -121,7 +123,7 @@ export function actionToBindingState(action: Action): BindingState {
       }),
       scrollMode: (act) => ({
         actionType: "scrollMode",
-        sensitivity: act.sensitivity ?? 1.0,
+        sensitivity: act.sensitivity ?? DEFAULT_SCROLL_SENSITIVITY,
         invert: act.invert ?? false,
         axis: act.axis ?? "both",
       }),

@@ -99,12 +99,14 @@ export function useLayerState(): UseLayerStateReturn {
     (from, selectedTrigger) => (action, timing, activeTrigger) => {
       // triggerに応じたtimingMsを決定
       const trigger = activeTrigger || selectedTrigger;
-      const timingMs =
-        trigger === "hold" || trigger === "doubleTap"
-          ? (timing as any)?.[trigger]
-          : undefined;
+      let timingMs: number | undefined;
+      if (trigger === "hold") {
+        timingMs = timing?.hold;
+      } else if (trigger === "doubleTap") {
+        timingMs = timing?.doubleTap;
+      }
       const interruptBehavior =
-        trigger === "hold" ? (timing as any)?.interruptBehavior : undefined;
+        trigger === "hold" ? timing?.interruptBehavior : undefined;
 
       send("save-key-config", {
         layerId,

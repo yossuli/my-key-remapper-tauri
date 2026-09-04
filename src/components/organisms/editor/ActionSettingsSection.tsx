@@ -174,10 +174,7 @@ export function ActionSettingsSection({
             />
           ),
           scrollMode: (s) => (
-            <ScrollActionSettings
-              actionSetters={actionSetters}
-              state={s}
-            />
+            <ScrollActionSettings actionSetters={actionSetters} state={s} />
           ),
           macro: (s) => (
             <MacroActionSettings

@@ -1,4 +1,4 @@
-import { execSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -25,20 +25,27 @@ process.stdin.on("end", () => {
     });
 
     const success = verifyResult.status === 0;
-    const output = (verifyResult.stdout || "") + "\n" + (verifyResult.stderr || "");
+    const output =
+      (verifyResult.stdout || "") + "\n" + (verifyResult.stderr || "");
 
     fs.writeFileSync(
       statusFile,
-      JSON.stringify({
-        timestamp: Date.now(),
-        success,
-        output: output.trim(),
-      }, null, 2),
+      JSON.stringify(
+        {
+          timestamp: Date.now(),
+          success,
+          output: output.trim(),
+        },
+        null,
+        2
+      ),
       "utf-8"
     );
 
     if (!success) {
-      console.error("\n⚠️ [Auto-Verify Hook] 変更後の自動検証でエラーが検出されました。");
+      console.error(
+        "\n⚠️ [Auto-Verify Hook] 変更後の自動検証でエラーが検出されました。"
+      );
     }
   } catch (err) {
     // フック自身の例外でプロセスを壊さない
