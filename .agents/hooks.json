@@ -1,10 +1,29 @@
 {
-  "build-verifier": {
+  "auto-verification-harness": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "node scripts/hook-pre-invocation.mjs",
+        "timeout": 15
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "replace_file_content|write_to_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/hook-verify.mjs",
+            "timeout": 45
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "type": "command",
-        "command": "node scripts/verify-build.js",
-        "timeout": 60
+        "command": "node scripts/hook-stop.mjs",
+        "timeout": 15
       }
     ]
   }

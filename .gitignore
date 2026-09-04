@@ -5,3 +5,4 @@ out/
 
 docs
 electron.vite.config.*.mjs
+.cache/
