@@ -210,6 +210,18 @@ fn set_remap_enabled(enabled: bool) {
     hook::REMAP_ENABLED.store(enabled, std::sync::atomic::Ordering::SeqCst);
 }
 
+#[tauri::command(rename = "get-remap-enabled")]
+fn get_remap_enabled() -> bool {
+    #[cfg(windows)]
+    {
+        hook::REMAP_ENABLED.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    #[cfg(not(windows))]
+    {
+        true
+    }
+}
+
 #[tauri::command(rename = "add-layer")]
 fn add_layer(layer_id: String, state: State<'_, ConfigState>) {
     log::info!("add_layer: {}", layer_id);
@@ -392,6 +404,7 @@ pub fn run() {
             release_all_keys,
             save_key_config,
             set_remap_enabled,
+            get_remap_enabled,
             add_layer,
             remove_layer,
             reorder_layers,

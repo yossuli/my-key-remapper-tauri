@@ -13,7 +13,7 @@ use crate::key_processor::{KeyProcessor, HookAction};
 static HOOK_HANDLE: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
 static MOUSE_HOOK_HANDLE: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
-pub static REMAP_ENABLED: AtomicBool = AtomicBool::new(false);
+pub static REMAP_ENABLED: AtomicBool = AtomicBool::new(true);
 
 // スクロールモード状態 (低レベルフック用・高速かつ非同期)
 pub static SCROLL_MODE_ACTIVE: AtomicBool = AtomicBool::new(false);
