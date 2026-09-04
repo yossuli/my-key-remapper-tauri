@@ -128,6 +128,8 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
         let is_injected = (flags & 0x10) != 0; // LLKHF_INJECTED
 
         if (is_down || is_up) && !is_injected {
+            crate::key_processor::state::touch_key_activity();
+
             if is_down {
                 get_pressed_keys_set().lock().unwrap().insert(vk_code);
             } else if is_up {

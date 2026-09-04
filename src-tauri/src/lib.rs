@@ -129,8 +129,6 @@ fn get_layer_stack() -> Vec<String> {
 fn get_pressed_keys() -> Vec<u32> {
     #[cfg(windows)]
     {
-        crate::key_processor::utils::reconcile_physical_keys();
-
         let state = crate::key_processor::state::get_state_wrapper().mutex.lock().unwrap();
         let mut active_keys: std::collections::HashSet<u32> = std::collections::HashSet::new();
         for (&vk, vks) in &state.pressed_vks {

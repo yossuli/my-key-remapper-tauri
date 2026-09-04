@@ -329,11 +329,37 @@ impl KeyProcessor {
                     }
                 }
                 state_guard.key_states.retain(|_, s| *s != KeyState::Idle);
+
+                // アイドル時の自己修復判定 (キー入力が完全に落ち着いている時のみ実行)
+                const IDLE_RECONCILE_THRESHOLD: std::time::Duration = std::time::Duration::from_millis(1500);
+                let should_reconcile = if !state_guard.pressed_vks.is_empty() || !state_guard.momentary_layers.is_empty() {
+                    if let Some(last_act) = crate::key_processor::state::get_last_key_activity() {
+                        let idle_target = last_act + IDLE_RECONCILE_THRESHOLD;
+                        if now >= idle_target {
+                            true
+                        } else {
+                            if next_timeout.map_or(true, |t| idle_target < t) {
+                                next_timeout = Some(idle_target);
+                            }
+                            false
+                        }
+                    } else {
+                        true
+                    }
+                } else {
+                    false
+                };
                 
                 // 一旦ロックを手放してコマンド実行
                 drop(state_guard);
                 for (vk, cmd) in cmds {
                     Self::execute_action(cmd, vk, &config);
+                }
+
+                // アイドルかつスタックキーがある場合のみ安全に自己修復
+                if should_reconcile {
+                    #[cfg(windows)]
+                    crate::key_processor::utils::reconcile_physical_keys();
                 }
                 
                 // 再びロックを取得して待機

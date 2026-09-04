@@ -31,12 +31,22 @@ pub fn send_key_raw(vk: u16, is_up: bool) {
         windows::Win32::UI::Input::KeyboardAndMouse::KEYBD_EVENT_FLAGS(0)
     };
 
+    #[cfg(windows)]
+    let scan = unsafe {
+        windows::Win32::UI::Input::KeyboardAndMouse::MapVirtualKeyW(
+            vk as u32,
+            windows::Win32::UI::Input::KeyboardAndMouse::MAPVK_VK_TO_VSC,
+        )
+    } as u16;
+    #[cfg(not(windows))]
+    let scan = 0;
+
     let input = INPUT {
         r#type: INPUT_KEYBOARD,
         Anonymous: INPUT_0 {
             ki: KEYBDINPUT {
                 wVk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY(vk),
-                wScan: 0,
+                wScan: scan,
                 dwFlags: dw_flags,
                 time: 0,
                 dwExtraInfo: 0,
@@ -49,8 +59,47 @@ pub fn send_key_raw(vk: u16, is_up: bool) {
 }
 
 pub fn send_key_atomic(virtual_vk: u16) {
-    send_key_raw(virtual_vk, false);
-    send_key_raw(virtual_vk, true);
+    #[cfg(windows)]
+    {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{
+            MapVirtualKeyW, MAPVK_VK_TO_VSC, KEYBD_EVENT_FLAGS,
+        };
+        let scan = unsafe { MapVirtualKeyW(virtual_vk as u32, MAPVK_VK_TO_VSC) } as u16;
+        let inputs = [
+            INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY(virtual_vk),
+                        wScan: scan,
+                        dwFlags: KEYBD_EVENT_FLAGS(0),
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                },
+            },
+            INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY(virtual_vk),
+                        wScan: scan,
+                        dwFlags: KEYEVENTF_KEYUP,
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                },
+            },
+        ];
+        unsafe {
+            SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        send_key_raw(virtual_vk, false);
+        send_key_raw(virtual_vk, true);
+    }
 }
 
 pub fn send_key_down(physical_vk: u16, virtual_vk: u16) {
@@ -115,10 +164,14 @@ pub fn release_all_virtual_keys() {
 pub fn reconcile_physical_keys() {
     use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 
+    // 自己修復の対象は「OSにDOWNを送信したまま戻っていないキー (pressed_vks)」と
+    // 「解除されなくなったモメンタリレイヤー (momentary_layers)」のみに限定する。
+    // key_states (ステートマシン) は WaitingForDoubleTap など物理キーが離されているのが
+    // 正常な待機状態を含むため、絶対にここから削除してはならない！
     let tracked_keys: Vec<u16> = {
         let state = get_state().lock().unwrap();
-        let mut keys: std::collections::HashSet<u16> = state.key_states.keys().copied().collect();
-        for &k in state.pressed_vks.keys() {
+        let mut keys: std::collections::HashSet<u16> = state.pressed_vks.keys().copied().collect();
+        for &k in state.momentary_layers.keys() {
             keys.insert(k);
         }
         keys.into_iter().collect()
@@ -144,7 +197,6 @@ pub fn reconcile_physical_keys() {
         let mut state = get_state().lock().unwrap();
         let mut targets = Vec::new();
         for vk in released_physical_keys {
-            state.key_states.remove(&vk);
             if let Some(vks) = state.pressed_vks.remove(&vk) {
                 targets.extend(vks);
             }
@@ -296,9 +348,13 @@ pub fn send_mouse_wheel(delta_y: i32, delta_x: i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex as StdMutex;
+
+    static TEST_LOCK: StdMutex<()> = StdMutex::new(());
 
     #[test]
     fn test_pressed_vks_empty_entry_removed() {
+        let _lock = TEST_LOCK.lock().unwrap();
         let physical = 0x41; // 'A'
         let virtual_k = 0x42; // 'B'
 
@@ -319,6 +375,7 @@ mod tests {
 
     #[test]
     fn test_release_all_virtual_keys() {
+        let _lock = TEST_LOCK.lock().unwrap();
         send_key_down(0x50, 0x60);
         send_key_down(0x51, 0x61);
 
@@ -328,6 +385,54 @@ mod tests {
         assert!(state.pressed_vks.is_empty());
         assert!(state.key_states.is_empty());
         assert_eq!(state.active_layers, vec!["base".to_string()]);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_reconcile_physical_keys_preserves_waiting_for_double_tap() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        use crate::state_machine::KeyState;
+        let dummy_vk = 0xFE; // テスト用VK (物理的に押されていないキー)
+        {
+            let mut state = get_state().lock().unwrap();
+            state.key_states.insert(
+                dummy_vk,
+                KeyState::WaitingForDoubleTap {
+                    first_released_at: std::time::Instant::now(),
+                },
+            );
+        }
+
+        reconcile_physical_keys();
+
+        {
+            let mut state = get_state().lock().unwrap();
+            // key_states に WaitingForDoubleTap が誤って削除されず残っていること！
+            assert!(state.key_states.contains_key(&dummy_vk));
+            state.key_states.remove(&dummy_vk); // クリーンアップ
+        }
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_reconcile_physical_keys_cleans_unpressed_vks() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        let dummy_vk = 0xFE; // テスト用VK (物理的に押されていないキー)
+        let virtual_vk = 0xFD;
+
+        send_key_down(dummy_vk, virtual_vk);
+        {
+            let state = get_state().lock().unwrap();
+            assert!(state.pressed_vks.contains_key(&dummy_vk));
+        }
+
+        reconcile_physical_keys();
+
+        {
+            let state = get_state().lock().unwrap();
+            // 物理的に押されていない dummy_vk は pressed_vks から自己修復で解放されること
+            assert!(!state.pressed_vks.contains_key(&dummy_vk));
+        }
     }
 }
 

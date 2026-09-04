@@ -33,3 +33,16 @@ pub fn get_state_wrapper() -> &'static StateWrapper {
 pub fn get_state() -> &'static Mutex<ProcessorState> {
     &get_state_wrapper().mutex
 }
+
+static LAST_KEY_ACTIVITY: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+
+pub fn touch_key_activity() {
+    if let Ok(mut lock) = LAST_KEY_ACTIVITY.lock() {
+        *lock = Some(std::time::Instant::now());
+    }
+}
+
+pub fn get_last_key_activity() -> Option<std::time::Instant> {
+    LAST_KEY_ACTIVITY.lock().ok().and_then(|g| *g)
+}
+
