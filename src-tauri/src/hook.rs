@@ -126,8 +126,9 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
 
         let flags = kb_struct.flags.0;
         let is_injected = (flags & 0x10) != 0; // LLKHF_INJECTED
+        let is_self_injected = is_injected && kb_struct.dwExtraInfo == crate::key_processor::utils::INJECTED_SIGNATURE;
 
-        if (is_down || is_up) && !is_injected {
+        if (is_down || is_up) && !is_self_injected {
             crate::key_processor::state::touch_key_activity();
 
             if is_down {

@@ -1,18 +1,34 @@
 use crate::Config;
 use std::collections::HashSet;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_EXTENDEDKEY,
+    KEYBD_EVENT_FLAGS,
     INPUT_MOUSE, MOUSEINPUT,
     MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP,
     MOUSEEVENTF_WHEEL, MOUSEEVENTF_HWHEEL
 };
 use super::state::get_state;
 
+pub const VK_CANCEL: u16 = 0x03;
 pub const VK_SHIFT: u16 = 0x10;
 pub const VK_CONTROL: u16 = 0x11;
 pub const VK_MENU: u16 = 0x12; // Alt
+pub const VK_PRIOR: u16 = 0x21; // Page Up
+pub const VK_NEXT: u16 = 0x22;  // Page Down
+pub const VK_END: u16 = 0x23;
+pub const VK_HOME: u16 = 0x24;
+pub const VK_LEFT: u16 = 0x25;
+pub const VK_UP: u16 = 0x26;
+pub const VK_RIGHT: u16 = 0x27;
+pub const VK_DOWN: u16 = 0x28;
+pub const VK_SNAPSHOT: u16 = 0x2C; // Print Screen
+pub const VK_INSERT: u16 = 0x2D;
+pub const VK_DELETE: u16 = 0x2E;
 pub const VK_LWIN: u16 = 0x5B;
 pub const VK_RWIN: u16 = 0x5C;
+pub const VK_APPS: u16 = 0x5D;
+pub const VK_DIVIDE: u16 = 0x6F; // Numpad /
+pub const VK_NUMLOCK: u16 = 0x90;
 pub const VK_LSHIFT: u16 = 0xA0;
 pub const VK_RSHIFT: u16 = 0xA1;
 pub const VK_LCONTROL: u16 = 0xA2;
@@ -20,75 +36,119 @@ pub const VK_RCONTROL: u16 = 0xA3;
 pub const VK_LMENU: u16 = 0xA4;
 pub const VK_RMENU: u16 = 0xA5;
 
+// メディア・ブラウザ・アプリ起動キー
+pub const VK_BROWSER_BACK: u16 = 0xA6;
+pub const VK_BROWSER_FORWARD: u16 = 0xA7;
+pub const VK_BROWSER_REFRESH: u16 = 0xA8;
+pub const VK_BROWSER_STOP: u16 = 0xA9;
+pub const VK_BROWSER_SEARCH: u16 = 0xAA;
+pub const VK_BROWSER_FAVORITES: u16 = 0xAB;
+pub const VK_BROWSER_HOME: u16 = 0xAC;
+pub const VK_VOLUME_MUTE: u16 = 0xAD;
+pub const VK_VOLUME_DOWN: u16 = 0xAE;
+pub const VK_VOLUME_UP: u16 = 0xAF;
+pub const VK_MEDIA_NEXT_TRACK: u16 = 0xB0;
+pub const VK_MEDIA_PREV_TRACK: u16 = 0xB1;
+pub const VK_MEDIA_STOP: u16 = 0xB2;
+pub const VK_MEDIA_PLAY_PAUSE: u16 = 0xB3;
+pub const VK_LAUNCH_MAIL: u16 = 0xB4;
+pub const VK_LAUNCH_MEDIA_SELECT: u16 = 0xB5;
+pub const VK_LAUNCH_APP1: u16 = 0xB6;
+pub const VK_LAUNCH_APP2: u16 = 0xB7;
+
+/// 自プロセスが注入した入力であることを示すマジックナンバー ("TAUR")
+pub const INJECTED_SIGNATURE: usize = 0x54415552;
+
 pub fn is_modifier(vk: u16) -> bool {
     matches!(vk, VK_SHIFT | VK_CONTROL | VK_MENU | VK_LWIN | VK_RWIN | VK_LSHIFT | VK_RSHIFT | VK_LCONTROL | VK_RCONTROL | VK_LMENU | VK_RMENU)
 }
 
-pub fn send_key_raw(vk: u16, is_up: bool) {
-    let dw_flags = if is_up {
+/// 拡張キー（KEYEVENTF_EXTENDEDKEY フラグが必要なキー）であるかを判定
+pub fn is_extended_key(vk: u16) -> bool {
+    matches!(
+        vk,
+        VK_PRIOR
+            | VK_NEXT
+            | VK_END
+            | VK_HOME
+            | VK_LEFT
+            | VK_UP
+            | VK_RIGHT
+            | VK_DOWN
+            | VK_SNAPSHOT
+            | VK_INSERT
+            | VK_DELETE
+            | VK_LWIN
+            | VK_RWIN
+            | VK_APPS
+            | VK_DIVIDE
+            | VK_NUMLOCK
+            | VK_RCONTROL
+            | VK_RMENU
+            | VK_CANCEL
+            | VK_BROWSER_BACK..=VK_LAUNCH_APP2
+    )
+}
+
+#[cfg(windows)]
+pub fn build_keybd_input(vk: u16, is_up: bool) -> KEYBDINPUT {
+    let mut dw_flags = if is_up {
         KEYEVENTF_KEYUP
     } else {
-        windows::Win32::UI::Input::KeyboardAndMouse::KEYBD_EVENT_FLAGS(0)
+        KEYBD_EVENT_FLAGS(0)
     };
 
-    #[cfg(windows)]
+    if is_extended_key(vk) {
+        dw_flags |= KEYEVENTF_EXTENDEDKEY;
+    }
+
     let scan = unsafe {
         windows::Win32::UI::Input::KeyboardAndMouse::MapVirtualKeyW(
             vk as u32,
             windows::Win32::UI::Input::KeyboardAndMouse::MAPVK_VK_TO_VSC,
         )
     } as u16;
-    #[cfg(not(windows))]
-    let scan = 0;
 
-    let input = INPUT {
-        r#type: INPUT_KEYBOARD,
-        Anonymous: INPUT_0 {
-            ki: KEYBDINPUT {
-                wVk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY(vk),
-                wScan: scan,
-                dwFlags: dw_flags,
-                time: 0,
-                dwExtraInfo: 0,
-            },
-        },
-    };
-    unsafe {
-        SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
+    KEYBDINPUT {
+        wVk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY(vk),
+        wScan: scan,
+        dwFlags: dw_flags,
+        time: 0,
+        dwExtraInfo: INJECTED_SIGNATURE,
+    }
+}
+
+pub fn send_key_raw(vk: u16, is_up: bool) {
+    #[cfg(windows)]
+    {
+        let ki = build_keybd_input(vk, is_up);
+        let input = INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 { ki },
+        };
+        unsafe {
+            SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (vk, is_up);
     }
 }
 
 pub fn send_key_atomic(virtual_vk: u16) {
     #[cfg(windows)]
     {
-        use windows::Win32::UI::Input::KeyboardAndMouse::{
-            MapVirtualKeyW, MAPVK_VK_TO_VSC, KEYBD_EVENT_FLAGS,
-        };
-        let scan = unsafe { MapVirtualKeyW(virtual_vk as u32, MAPVK_VK_TO_VSC) } as u16;
+        let ki_down = build_keybd_input(virtual_vk, false);
+        let ki_up = build_keybd_input(virtual_vk, true);
         let inputs = [
             INPUT {
                 r#type: INPUT_KEYBOARD,
-                Anonymous: INPUT_0 {
-                    ki: KEYBDINPUT {
-                        wVk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY(virtual_vk),
-                        wScan: scan,
-                        dwFlags: KEYBD_EVENT_FLAGS(0),
-                        time: 0,
-                        dwExtraInfo: 0,
-                    },
-                },
+                Anonymous: INPUT_0 { ki: ki_down },
             },
             INPUT {
                 r#type: INPUT_KEYBOARD,
-                Anonymous: INPUT_0 {
-                    ki: KEYBDINPUT {
-                        wVk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY(virtual_vk),
-                        wScan: scan,
-                        dwFlags: KEYEVENTF_KEYUP,
-                        time: 0,
-                        dwExtraInfo: 0,
-                    },
-                },
+                Anonymous: INPUT_0 { ki: ki_up },
             },
         ];
         unsafe {
@@ -361,13 +421,13 @@ pub fn send_mouse_click(button: &str, click_count: u32) {
         inputs.push(INPUT {
             r#type: INPUT_MOUSE,
             Anonymous: INPUT_0 {
-                mi: MOUSEINPUT { dx: 0, dy: 0, mouseData: 0, dwFlags: down_flag, time: 0, dwExtraInfo: 0 },
+                mi: MOUSEINPUT { dx: 0, dy: 0, mouseData: 0, dwFlags: down_flag, time: 0, dwExtraInfo: INJECTED_SIGNATURE },
             },
         });
         inputs.push(INPUT {
             r#type: INPUT_MOUSE,
             Anonymous: INPUT_0 {
-                mi: MOUSEINPUT { dx: 0, dy: 0, mouseData: 0, dwFlags: up_flag, time: 0, dwExtraInfo: 0 },
+                mi: MOUSEINPUT { dx: 0, dy: 0, mouseData: 0, dwFlags: up_flag, time: 0, dwExtraInfo: INJECTED_SIGNATURE },
             },
         });
     }
@@ -391,7 +451,7 @@ pub fn send_mouse_wheel(delta_y: i32, delta_x: i32) {
                     mouseData: delta_y as u32,
                     dwFlags: MOUSEEVENTF_WHEEL,
                     time: 0,
-                    dwExtraInfo: 0,
+                    dwExtraInfo: INJECTED_SIGNATURE,
                 },
             },
         });
@@ -407,7 +467,7 @@ pub fn send_mouse_wheel(delta_y: i32, delta_x: i32) {
                     mouseData: delta_x as u32,
                     dwFlags: MOUSEEVENTF_HWHEEL,
                     time: 0,
-                    dwExtraInfo: 0,
+                    dwExtraInfo: INJECTED_SIGNATURE,
                 },
             },
         });
@@ -539,6 +599,99 @@ mod tests {
             state.active_layers = vec!["base".to_string()];
             state.passthrough_trigger_keys.clear();
         }
+    }
+
+    #[test]
+    fn test_is_extended_key() {
+        // 拡張キーに該当するキー
+        let extended_keys = [
+            VK_LEFT, VK_UP, VK_RIGHT, VK_DOWN,
+            VK_PRIOR, VK_NEXT, VK_END, VK_HOME,
+            VK_INSERT, VK_DELETE,
+            VK_DIVIDE, VK_NUMLOCK,
+            VK_RCONTROL, VK_RMENU,
+            VK_LWIN, VK_RWIN, VK_APPS,
+            VK_SNAPSHOT, VK_CANCEL,
+            VK_VOLUME_MUTE, VK_VOLUME_UP, VK_VOLUME_DOWN,
+            VK_MEDIA_PLAY_PAUSE, VK_MEDIA_NEXT_TRACK,
+            VK_BROWSER_BACK, VK_BROWSER_FORWARD,
+        ];
+        for &vk in &extended_keys {
+            assert!(is_extended_key(vk), "Key 0x{:X} should be recognized as extended key", vk);
+        }
+
+        // 拡張キーに該当しない通常キー
+        let non_extended_keys = [
+            0x41, // 'A'
+            0x30, // '0'
+            0x0D, // VK_RETURN
+            0x20, // VK_SPACE
+            0x08, // VK_BACK
+            0x09, // VK_TAB
+            VK_LSHIFT,
+            VK_RSHIFT,
+            VK_LCONTROL,
+            VK_LMENU,
+            VK_SHIFT,
+            VK_CONTROL,
+            VK_MENU,
+        ];
+        for &vk in &non_extended_keys {
+            assert!(!is_extended_key(vk), "Key 0x{:X} should not be recognized as extended key", vk);
+        }
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_build_keybd_input_extended_key() {
+        // 1. 矢印キー（VK_LEFT: 0x25）の KeyDown
+        let input_down = build_keybd_input(VK_LEFT, false);
+        assert_eq!(input_down.wVk.0, VK_LEFT);
+        assert_eq!(input_down.dwExtraInfo, INJECTED_SIGNATURE);
+        assert_eq!(input_down.dwFlags & KEYEVENTF_EXTENDEDKEY, KEYEVENTF_EXTENDEDKEY);
+        assert_eq!(input_down.dwFlags & KEYEVENTF_KEYUP, windows::Win32::UI::Input::KeyboardAndMouse::KEYBD_EVENT_FLAGS(0));
+
+        // 2. 矢印キー（VK_LEFT: 0x25）の KeyUp
+        let input_up = build_keybd_input(VK_LEFT, true);
+        assert_eq!(input_up.wVk.0, VK_LEFT);
+        assert_eq!(input_up.dwExtraInfo, INJECTED_SIGNATURE);
+        assert_eq!(input_up.dwFlags & KEYEVENTF_EXTENDEDKEY, KEYEVENTF_EXTENDEDKEY);
+        assert_eq!(input_up.dwFlags & KEYEVENTF_KEYUP, KEYEVENTF_KEYUP);
+
+        // 3. 通常キー（'A': 0x41）の KeyDown
+        let normal_down = build_keybd_input(0x41, false);
+        assert_eq!(normal_down.wVk.0, 0x41);
+        assert_eq!(normal_down.dwExtraInfo, INJECTED_SIGNATURE);
+        assert_ne!(normal_down.dwFlags & KEYEVENTF_EXTENDEDKEY, KEYEVENTF_EXTENDEDKEY);
+        assert_eq!(normal_down.dwFlags & KEYEVENTF_KEYUP, windows::Win32::UI::Input::KeyboardAndMouse::KEYBD_EVENT_FLAGS(0));
+
+        // 4. 通常キー（'A': 0x41）の KeyUp
+        let normal_up = build_keybd_input(0x41, true);
+        assert_eq!(normal_up.wVk.0, 0x41);
+        assert_eq!(normal_up.dwExtraInfo, INJECTED_SIGNATURE);
+        assert_ne!(normal_up.dwFlags & KEYEVENTF_EXTENDEDKEY, KEYEVENTF_EXTENDEDKEY);
+        assert_eq!(normal_up.dwFlags & KEYEVENTF_KEYUP, KEYEVENTF_KEYUP);
+    }
+
+    #[test]
+    fn test_injected_signature_filtering_logic() {
+        // 自プロセス注入: flags に 0x10 があり、dwExtraInfo == INJECTED_SIGNATURE
+        let flags_injected = 0x10u32;
+        let self_extra_info = INJECTED_SIGNATURE;
+        let is_injected = (flags_injected & 0x10) != 0;
+        let is_self_injected = is_injected && self_extra_info == INJECTED_SIGNATURE;
+        assert!(is_self_injected, "Self-injected input must be recognized as self-injected");
+
+        // 外部ツール注入: flags に 0x10 があるが、dwExtraInfo != INJECTED_SIGNATURE (例: 0 や別ツールの値)
+        let ext_extra_info = 0usize;
+        let is_ext_self_injected = is_injected && ext_extra_info == INJECTED_SIGNATURE;
+        assert!(!is_ext_self_injected, "External tool injected input must NOT be recognized as self-injected");
+
+        // 物理キー入力: flags に 0x10 がない
+        let flags_physical = 0x00u32;
+        let is_phys_injected = (flags_physical & 0x10) != 0;
+        let is_phys_self_injected = is_phys_injected && ext_extra_info == INJECTED_SIGNATURE;
+        assert!(!is_phys_self_injected, "Physical key input must NOT be recognized as self-injected");
     }
 }
 
