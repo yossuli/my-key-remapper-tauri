@@ -151,14 +151,7 @@ fn get_pressed_keys() -> Vec<u32> {
 
 #[tauri::command(rename = "get-macros")]
 fn get_macros(state: State<'_, ConfigState>) -> Value {
-    let mut config = (**state.config.load()).clone();
-    if config.macros.is_empty() {
-        profile::ensure_macros_loaded(&mut config);
-        if !config.macros.is_empty() {
-            save_current_config(&config, &state);
-            state.config.store(Arc::new(config.clone()));
-        }
-    }
+    let config = (**state.config.load()).clone();
     serde_json::to_value(&config.macros).unwrap_or(serde_json::json!([]))
 }
 

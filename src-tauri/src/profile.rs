@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -35,26 +34,6 @@ pub fn get_active_profile_meta_path() -> PathBuf {
 
 pub fn get_profile_path(name: &str) -> PathBuf {
     get_profiles_dir().join(format!("{}.json", name))
-}
-
-pub fn get_legacy_macros_path() -> PathBuf {
-    get_app_data_dir().join("key-mapping-macros-v2.json")
-}
-
-pub fn ensure_macros_loaded(config: &mut Config) {
-    if config.macros.is_empty() {
-        let legacy_path = get_legacy_macros_path();
-        if legacy_path.exists() {
-            if let Ok(content) = fs::read_to_string(&legacy_path) {
-                if let Ok(macros) = serde_json::from_str::<Vec<Value>>(&content) {
-                    if !macros.is_empty() {
-                        log::info!("Loaded {} legacy macros from {:?}", macros.len(), legacy_path);
-                        config.macros = macros;
-                    }
-                }
-            }
-        }
-    }
 }
 
 pub fn validate_profile_name(name: &str) -> Result<String, String> {
@@ -150,7 +129,7 @@ pub fn initialize_profiles() -> (Config, String) {
     }
 
     let active_path = get_profile_path(&active);
-    let mut loaded_config = if let Ok(json) = fs::read_to_string(&active_path) {
+    let loaded_config = if let Ok(json) = fs::read_to_string(&active_path) {
         match serde_json::from_str::<Config>(&json) {
             Ok(c) => c,
             Err(e) => {
@@ -161,13 +140,6 @@ pub fn initialize_profiles() -> (Config, String) {
     } else {
         crate::get_default_config()
     };
-
-    if loaded_config.macros.is_empty() {
-        ensure_macros_loaded(&mut loaded_config);
-        if !loaded_config.macros.is_empty() {
-            save_config_to_disk(&loaded_config, &active);
-        }
-    }
 
     (loaded_config, active)
 }
@@ -190,15 +162,8 @@ pub fn load_profile(profile_name: String, state: State<'_, ConfigState>) -> Resu
     }
     let json = fs::read_to_string(&profile_path)
         .map_err(|e| format!("プロファイルの読み込みに失敗しました: {}", e))?;
-    let mut config = serde_json::from_str::<Config>(&json)
+    let config = serde_json::from_str::<Config>(&json)
         .map_err(|e| format!("プロファイルの解析に失敗しました: {}", e))?;
-
-    if config.macros.is_empty() {
-        ensure_macros_loaded(&mut config);
-        if !config.macros.is_empty() {
-            save_config_to_disk(&config, &profile_name);
-        }
-    }
 
     state.config.store(Arc::new(config.clone()));
     *state.active_profile.lock().unwrap() = profile_name.clone();
