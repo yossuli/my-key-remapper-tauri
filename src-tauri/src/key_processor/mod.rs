@@ -6,7 +6,7 @@ use crate::Config;
 use crate::state_machine::{transition, ActionCommand, KeyState, TriggerEvent};
 use std::time::Instant;
 use state::get_state;
-use utils::{send_key_down, send_key_up, send_key_raw, is_modifier, apply_layer_modifiers};
+use utils::{send_key_down, send_key_up, send_key_raw, send_key_atomic, is_modifier, apply_layer_modifiers};
 use actions::apply_action;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -84,17 +84,17 @@ impl KeyProcessor {
                 if let Some(action) = Self::get_action(vk, "tap", config, &active_layers) {
                     apply_action(vk, action, false, config);
                 } else {
-                    send_key_down(vk, vk);
-                    send_key_up(vk, vk);
+                    send_key_atomic(vk);
                 }
             }
             ActionCommand::ExecuteTapAtomic => {
                 if let Some(action) = Self::get_action(vk, "tap", config, &active_layers) {
                     apply_action(vk, action, true, config);
                 } else {
-                    send_key_down(vk, vk);
-                    send_key_up(vk, vk);
+                    send_key_atomic(vk);
                 }
+                // アトミック処理完了後、確実に物理キートラッカーから該当VKをクリーンアップ
+                get_state().lock().unwrap().pressed_vks.remove(&vk);
             }
             ActionCommand::ExecuteHold => {
                 if let Some(action) = Self::get_action(vk, "hold", config, &active_layers) {

@@ -110,7 +110,19 @@ fn get_layer_stack() -> Vec<String> {
 fn get_pressed_keys() -> Vec<u32> {
     #[cfg(windows)]
     {
-        crate::key_processor::state::get_state_wrapper().mutex.lock().unwrap().pressed_vks.keys().map(|&k| k as u32).collect()
+        crate::key_processor::utils::reconcile_physical_keys();
+
+        let state = crate::key_processor::state::get_state_wrapper().mutex.lock().unwrap();
+        let mut active_keys: std::collections::HashSet<u32> = std::collections::HashSet::new();
+        for (&vk, vks) in &state.pressed_vks {
+            if !vks.is_empty() {
+                active_keys.insert(vk as u32);
+            }
+        }
+        for &vk in state.key_states.keys() {
+            active_keys.insert(vk as u32);
+        }
+        active_keys.into_iter().collect()
     }
     #[cfg(not(windows))]
     {
@@ -147,7 +159,11 @@ fn save_macros(macros: Vec<Value>, state: State<'_, ConfigState>) {
 
 #[tauri::command(rename = "release-all-keys")]
 fn release_all_keys() {
-    log::info!("Release all keys");
+    log::info!("Release all keys invoked - releasing all tracked and virtual keys");
+    #[cfg(windows)]
+    {
+        crate::key_processor::utils::release_all_virtual_keys();
+    }
 }
 
 #[tauri::command(rename = "get-screen-size")]

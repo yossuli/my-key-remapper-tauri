@@ -1,7 +1,6 @@
 use crate::Config;
 use std::thread;
 use std::time::Duration;
-use crate::key_processor::utils::{send_key_down, send_key_up};
 
 fn execute_macro_sync(macro_id: &str, config: &Config, depth: u32) {
     if depth > 10 {
@@ -27,10 +26,10 @@ fn execute_macro_sync(macro_id: &str, config: &Config, depth: u32) {
                                 }
                                 log::info!("    remap keys: {:?}", vks);
                                 for &vk in &vks {
-                                    send_key_down(vk, vk);
+                                    crate::key_processor::utils::send_key_raw(vk, false);
                                 }
                                 for &vk in vks.iter().rev() {
-                                    send_key_up(vk, vk);
+                                    crate::key_processor::utils::send_key_raw(vk, true);
                                 }
                             }
                         }
