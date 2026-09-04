@@ -8,6 +8,7 @@ import { KeyRemapSection } from "@/components/organisms/KeyRemapSection";
 import { LayerStatusPanel } from "@/components/organisms/LayerStatusPanel";
 import { LogList } from "@/components/organisms/LogList";
 import { PressedKeysPanel } from "@/components/organisms/PressedKeysPanel";
+import { ProfileSelector } from "@/components/organisms/profile/ProfileSelector";
 import { VStack } from "@/components/template/Flex";
 import {
   Header,
@@ -21,6 +22,7 @@ import {
   type UseLayerStateReturn,
   useLayerState,
 } from "@/hooks/api/useLayerState";
+import { useProfileState } from "@/hooks/api/useProfileState";
 import { useRemapControl } from "@/hooks/api/useRemapControl";
 import type { LayoutType } from "@/types";
 import type { TriggerType } from "@/types/remapConfig";
@@ -38,9 +40,7 @@ interface KeyRemapperPageProps {
   onNavigateMacros: () => void;
 }
 
-export function KeyRemapperPage({
-  onNavigateMacros,
-}: KeyRemapperPageProps) {
+export function KeyRemapperPage({ onNavigateMacros }: KeyRemapperPageProps) {
   // カスタムフックでロジックを分離
   const {
     layers,
@@ -48,9 +48,32 @@ export function KeyRemapperPage({
     currentBindings,
     saveMapping,
     removeMapping,
-    ...layerActions
+    reloadLayers,
+    setLayerId,
+    addLayer,
+    removeLayer,
+    reorderLayers,
+    updateLayer,
   } = useLayerState();
   const { isActive, toggleActive } = useRemapControl();
+
+  const layerActions = useMemo(
+    () => ({
+      setLayerId,
+      addLayer,
+      removeLayer,
+      reorderLayers,
+      updateLayer,
+    }),
+    [setLayerId, addLayer, removeLayer, reorderLayers, updateLayer]
+  );
+
+  const profileState = useProfileState({
+    onProfileChanged: async () => {
+      await reloadLayers();
+      setLayerId("base");
+    },
+  });
 
   // UI状態
   const [editingKey, setEditingKey] = useState<number | null>(null);
@@ -88,6 +111,7 @@ export function KeyRemapperPage({
             onOpenSettings={() => setIsSettingsOpen(true)} // 🆕 → 🔥 (E. App Header Control)
             onToggleActive={toggleActive} // 🆕 → 🔥 (E. App Header Control)
             onToggleSimpleMode={() => setSimpleMode((prev) => !prev)} // 🆕 → 🔥 (E. App Header Control)
+            profileControl={<ProfileSelector profileState={profileState} />}
             simpleMode={simpleMode} // 🆕 → 🔥 (E. App Header Control)
           />
         </Header>

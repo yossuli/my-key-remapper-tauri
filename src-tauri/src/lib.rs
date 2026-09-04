@@ -7,12 +7,12 @@ pub mod raw_input;
 #[cfg(windows)]
 pub mod key_processor;
 pub mod state_machine;
-
+pub mod profile;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use arc_swap::ArcSwap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tauri::{Manager, State};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -47,12 +47,13 @@ pub struct Config {
     pub layer_order: Vec<String>,
     #[serde(default)]
     pub global_settings: Value,
-    #[serde(skip)]
+    #[serde(default)]
     pub macros: Vec<Value>,
 }
 
 pub struct ConfigState {
     pub config: ArcSwap<Config>,
+    pub active_profile: Mutex<String>,
 }
 
 #[tauri::command(rename = "get-mappings")]
@@ -60,27 +61,45 @@ fn get_mappings(state: State<'_, ConfigState>) -> Config {
     (**state.config.load()).clone()
 }
 
-fn get_config_path() -> std::path::PathBuf {
-    let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    std::path::PathBuf::from(app_data).join("my-key-remapper").join("key-mapping-config-v2.json")
-}
-
-fn get_macros_path() -> std::path::PathBuf {
-    let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    std::path::PathBuf::from(&app_data).join("my-key-remapper").join("key-mapping-macros-v2.json")
-}
-
-fn save_config_to_disk(config: &Config) {
-    let config_path = get_config_path();
-    if let Some(parent) = config_path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    if let Ok(json) = serde_json::to_string_pretty(config) {
-        match std::fs::write(&config_path, json) {
-            Ok(_) => log::info!("Saved config to {:?}", config_path),
-            Err(e) => log::error!("Failed to save config to {:?}: {}", config_path, e),
+pub fn get_default_config() -> Config {
+    serde_json::from_value(serde_json::json!({
+        "version": 1,
+        "layers": [
+            {
+                "id": "base",
+                "bindings": {
+                    "160": [{"trigger": "hold", "action": {"type": "layerMomentary", "layerId": "shift"}}],
+                    "161": [{"trigger": "hold", "action": {"type": "layerMomentary", "layerId": "shift"}}]
+                }
+            },
+            {
+                "id": "shift",
+                "bindings": {},
+                "defaultModifiers": {"shift": true}
+            }
+        ],
+        "macros": [
+            {
+                "id": "cursor-return-macro",
+                "name": "カーソル位置を記憶して復帰",
+                "actions": [
+                    { "type": "cursorSave" },
+                    { "type": "delay", "delayMs": 50 },
+                    { "type": "cursorRestore" }
+                ]
+            }
+        ],
+        "layerOrder": ["base", "shift"],
+        "globalSettings": {
+            "defaultHoldThresholdMs": 200,
+            "defaultTapIntervalMs": 300
         }
-    }
+    })).expect("Failed to parse initial config")
+}
+
+fn save_current_config(config: &Config, state: &State<'_, ConfigState>) {
+    let active_profile = state.active_profile.lock().unwrap().clone();
+    profile::save_config_to_disk(config, &active_profile);
 }
 
 #[tauri::command(rename = "update-global-settings")]
@@ -89,7 +108,7 @@ fn update_global_settings(settings: Value, state: State<'_, ConfigState>) {
     let mut config = (**state.config.load()).clone();
     if let Some(settings_obj) = settings.get("settings") {
         config.global_settings = settings_obj.clone();
-        save_config_to_disk(&config);
+        save_current_config(&config, &state);
         state.config.store(Arc::new(config));
     }
 }
@@ -140,20 +159,8 @@ fn get_macros(state: State<'_, ConfigState>) -> Value {
 fn save_macros(macros: Vec<Value>, state: State<'_, ConfigState>) {
     log::info!("save_macros: {:?}", macros);
     let mut config = (**state.config.load()).clone();
-    config.macros = macros.clone();
-    
-    let macros_path = get_macros_path();
-    if let Some(parent) = macros_path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    if let Ok(json) = serde_json::to_string_pretty(&macros) {
-        if let Err(e) = std::fs::write(&macros_path, json) {
-            log::error!("Failed to save macros to {:?}: {}", macros_path, e);
-        } else {
-            log::info!("Saved macros to {:?}", macros_path);
-        }
-    }
-    
+    config.macros = macros;
+    save_current_config(&config, &state);
     state.config.store(Arc::new(config));
 }
 
@@ -198,7 +205,7 @@ fn save_key_config(layer_id: String, from: u32, binding: Binding, state: State<'
         let bindings_arr = layer.bindings.entry(from_str).or_insert_with(Vec::new);
         bindings_arr.retain(|b| b.trigger != binding.trigger);
         bindings_arr.push(binding);
-        save_config_to_disk(&config);
+        save_current_config(&config, &state);
         state.config.store(Arc::new(config));
     }
 }
@@ -233,7 +240,7 @@ fn add_layer(layer_id: String, state: State<'_, ConfigState>) {
             default_modifiers: None,
         });
         config.layer_order.push(layer_id);
-        save_config_to_disk(&config);
+        save_current_config(&config, &state);
         state.config.store(Arc::new(config));
     }
 }
@@ -244,7 +251,7 @@ fn remove_layer(layer_id: String, state: State<'_, ConfigState>) {
     let mut config = (**state.config.load()).clone();
     config.layers.retain(|l| l.id != layer_id);
     config.layer_order.retain(|id| id != &layer_id);
-    save_config_to_disk(&config);
+    save_current_config(&config, &state);
     state.config.store(Arc::new(config));
 }
 
@@ -253,7 +260,7 @@ fn reorder_layers(new_order: Vec<String>, state: State<'_, ConfigState>) {
     log::info!("reorder_layers: {:?}", new_order);
     let mut config = (**state.config.load()).clone();
     config.layer_order = new_order;
-    save_config_to_disk(&config);
+    save_current_config(&config, &state);
     state.config.store(Arc::new(config));
 }
 
@@ -265,7 +272,7 @@ fn remove_binding(layer_id: String, from: u32, trigger: String, state: State<'_,
         let from_str = from.to_string();
         if let Some(bindings_arr) = layer.bindings.get_mut(&from_str) {
             bindings_arr.retain(|b| b.trigger != trigger);
-            save_config_to_disk(&config);
+            save_current_config(&config, &state);
             state.config.store(Arc::new(config));
         }
     }
@@ -289,7 +296,7 @@ fn update_layer(layer_id: String, updates: Value, state: State<'_, ConfigState>)
                 }
             }
         }
-        save_config_to_disk(&config);
+        save_current_config(&config, &state);
         state.config.store(Arc::new(config));
     }
 }
@@ -303,85 +310,12 @@ pub fn run() {
                 .build()
         )
         .setup(|app| {
-            let mut loaded_config = None;
-            let config_path = get_config_path();
-            if let Ok(json) = std::fs::read_to_string(&config_path) {
-                match serde_json::from_str::<Config>(&json) {
-                    Ok(parsed) => {
-                        loaded_config = Some(parsed);
-                        log::info!("Loaded config from disk: {:?}", config_path);
-                    },
-                    Err(e) => {
-                        log::error!("Failed to parse existing config ({:?}): {}", config_path, e);
-                    }
-                }
-            }
+            let (config_to_use, active_profile) = profile::initialize_profiles();
 
-            let macros_path = get_macros_path();
-            let mut loaded_macros = Vec::new();
-            if let Ok(json) = std::fs::read_to_string(&macros_path) {
-                match serde_json::from_str::<Vec<Value>>(&json) {
-                    Ok(parsed) => {
-                        loaded_macros = parsed;
-                        log::info!("Loaded macros from disk: {:?}", macros_path);
-                    },
-                    Err(e) => {
-                        log::error!("Failed to parse existing macros as array ({:?}): {}. Trying as object.", macros_path, e);
-                        if let Ok(parsed_obj) = serde_json::from_str::<Value>(&json) {
-                            if let Some(macros_arr) = parsed_obj.get("macros").and_then(|v| v.as_array()) {
-                                loaded_macros = macros_arr.clone();
-                                log::info!("Loaded macros from disk (object format): {:?}", macros_path);
-                            }
-                        }
-                    }
-                }
-            }
-
-            let mut config_to_use = loaded_config.unwrap_or_else(|| {
-                log::info!("Using default config");
-                let config: Config = serde_json::from_value(serde_json::json!({
-                    "version": 1,
-                    "layers": [
-                        {
-                            "id": "base",
-                            "bindings": {
-                                "160": [{"trigger": "hold", "action": {"type": "layerMomentary", "layerId": "shift"}}],
-                                "161": [{"trigger": "hold", "action": {"type": "layerMomentary", "layerId": "shift"}}]
-                            }
-                        },
-                        {
-                            "id": "shift",
-                            "bindings": {},
-                            "defaultModifiers": {"shift": true}
-                        }
-                    ],
-                    "macros": [
-                        {
-                            "id": "cursor-return-macro",
-                            "name": "カーソル位置を記憶して復帰",
-                            "actions": [
-                                { "type": "cursorSave" },
-                                { "type": "delay", "delayMs": 50 },
-                                { "type": "cursorRestore" }
-                            ]
-                        }
-                    ],
-                    "layerOrder": ["base", "shift"],
-                    "globalSettings": {
-                        "defaultHoldThresholdMs": 200,
-                        "defaultTapIntervalMs": 300
-                    }
-                })).expect("Failed to parse initial config");
-
-                // Save it right away
-                save_config_to_disk(&config);
-
-                config
+            app.manage(ConfigState {
+                config: ArcSwap::from(Arc::new(config_to_use)),
+                active_profile: Mutex::new(active_profile),
             });
-
-            config_to_use.macros = loaded_macros;
-
-            app.manage(ConfigState { config: ArcSwap::from(Arc::new(config_to_use)) });
 
             #[cfg(windows)]
             {
@@ -409,7 +343,15 @@ pub fn run() {
             remove_layer,
             reorder_layers,
             remove_binding,
-            update_layer
+            update_layer,
+            profile::list_profiles,
+            profile::load_profile,
+            profile::copy_profile,
+            profile::copy_profile_with_dialog,
+            profile::import_profile_with_dialog,
+            profile::export_profile_with_dialog,
+            profile::create_profile,
+            profile::delete_profile
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

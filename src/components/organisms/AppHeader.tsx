@@ -1,11 +1,5 @@
-import {
-  Eye,
-  EyeOff,
-  Keyboard,
-  List,
-  Power,
-  Settings,
-} from "lucide-react";
+import { Eye, EyeOff, Keyboard, List, Power, Settings } from "lucide-react";
+import type { ReactNode } from "react";
 import { Button } from "@/components/atoms/Button";
 import { Icon } from "@/components/atoms/Icon";
 import { Text } from "@/components/atoms/Text";
@@ -23,6 +17,8 @@ interface AppHeaderProps {
   onOpenSettings: () => void;
   /** マクロ管理を開くコールバック */
   onOpenMacros: () => void;
+  /** プロファイル操作コンポーネント */
+  profileControl?: ReactNode;
 }
 
 export function AppHeader({
@@ -32,10 +28,11 @@ export function AppHeader({
   onToggleSimpleMode, // 🆕 → 🔥 (E. App Header Control)
   onOpenSettings, // 🆕 → 🔥 (E. App Header Control)
   onOpenMacros,
+  profileControl,
 }: AppHeaderProps) {
   const icon = simpleMode ? Eye : EyeOff;
   return (
-    <HStack as="header" className="mb-8 justify-between">
+    <HStack as="header" className="mb-8 items-center justify-between">
       <HStack gap={3}>
         <Box className="rounded-lg bg-primary/10 p-2">
           <Icon className="text-primary" icon={Keyboard} size="lg" />
@@ -50,7 +47,8 @@ export function AppHeader({
         </VStack>
       </HStack>
 
-      <HStack gap={2}>
+      <HStack className="items-center" gap={2}>
+        {profileControl}
         <With value={onOpenMacros}>
           {(onClick) => (
             <Button
