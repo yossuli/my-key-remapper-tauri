@@ -21,23 +21,31 @@ pub enum HookAction {
 pub struct KeyProcessor;
 
 impl KeyProcessor {
-    fn get_bindings<'a>(
+    fn get_bindings_with_layer<'a>(
         vk: u16,
         config: &'a Config,
         active_layers: &[String],
-    ) -> Option<&'a Vec<crate::Binding>> {
+    ) -> Option<(&'a str, &'a Vec<crate::Binding>)> {
         for layer_id in config.layer_order.iter().rev() {
             if active_layers.contains(layer_id) || layer_id == "base" {
                 if let Some(layer) = config.layers.iter().find(|l| &l.id == layer_id) {
                     if let Some(bindings) = layer.bindings.get(&vk.to_string()) {
                         if !bindings.is_empty() {
-                            return Some(bindings);
+                            return Some((layer_id.as_str(), bindings));
                         }
                     }
                 }
             }
         }
         None
+    }
+
+    fn get_bindings<'a>(
+        vk: u16,
+        config: &'a Config,
+        active_layers: &[String],
+    ) -> Option<&'a Vec<crate::Binding>> {
+        Self::get_bindings_with_layer(vk, config, active_layers).map(|(_, b)| b)
     }
 
     fn has_triggers(vk: u16, config: &Config, active_layers: &[String]) -> (bool, bool) {
@@ -50,13 +58,22 @@ impl KeyProcessor {
         }
     }
 
-    fn get_action<'a>(vk: u16, trigger: &str, config: &'a Config, active_layers: &[String]) -> Option<&'a serde_json::Value> {
-        if let Some(bindings) = Self::get_bindings(vk, config, active_layers) {
+    fn get_action_with_layer<'a>(
+        vk: u16,
+        trigger: &str,
+        config: &'a Config,
+        active_layers: &[String],
+    ) -> Option<(&'a str, &'a serde_json::Value)> {
+        if let Some((layer_id, bindings)) = Self::get_bindings_with_layer(vk, config, active_layers) {
             if let Some(binding) = bindings.iter().find(|b| b.trigger == trigger) {
-                return Some(&binding.action);
+                return Some((layer_id, &binding.action));
             }
         }
         None
+    }
+
+    fn get_action<'a>(vk: u16, trigger: &str, config: &'a Config, active_layers: &[String]) -> Option<&'a serde_json::Value> {
+        Self::get_action_with_layer(vk, trigger, config, active_layers).map(|(_, a)| a)
     }
 
     fn get_timing(vk: u16, trigger: &str, config: &Config, active_layers: &[String]) -> Option<u32> {
@@ -84,15 +101,15 @@ impl KeyProcessor {
         match cmd {
             ActionCommand::None => {}
             ActionCommand::ExecuteTap => {
-                if let Some(action) = Self::get_action(vk, "tap", config, &active_layers) {
-                    apply_action(vk, action, false, config);
+                if let Some((source_layer, action)) = Self::get_action_with_layer(vk, "tap", config, &active_layers) {
+                    apply_action(vk, action, false, config, Some(source_layer));
                 } else {
                     send_key_atomic(vk);
                 }
             }
             ActionCommand::ExecuteTapAtomic => {
-                if let Some(action) = Self::get_action(vk, "tap", config, &active_layers) {
-                    apply_action(vk, action, true, config);
+                if let Some((source_layer, action)) = Self::get_action_with_layer(vk, "tap", config, &active_layers) {
+                    apply_action(vk, action, true, config, Some(source_layer));
                 } else {
                     send_key_atomic(vk);
                 }
@@ -100,8 +117,8 @@ impl KeyProcessor {
                 get_state().lock().unwrap().pressed_vks.remove(&vk);
             }
             ActionCommand::ExecuteHold => {
-                if let Some(action) = Self::get_action(vk, "hold", config, &active_layers) {
-                    apply_action(vk, action, false, config);
+                if let Some((source_layer, action)) = Self::get_action_with_layer(vk, "hold", config, &active_layers) {
+                    apply_action(vk, action, false, config, Some(source_layer));
                 }
             }
             ActionCommand::ExecuteHoldRepeat => {
@@ -128,8 +145,8 @@ impl KeyProcessor {
                 }
             }
             ActionCommand::ExecuteDoubleTap => {
-                if let Some(action) = Self::get_action(vk, "doubleTap", config, &active_layers) {
-                    apply_action(vk, action, false, config);
+                if let Some((source_layer, action)) = Self::get_action_with_layer(vk, "doubleTap", config, &active_layers) {
+                    apply_action(vk, action, false, config, Some(source_layer));
                 }
             }
             ActionCommand::ReleaseTap | ActionCommand::ReleaseHold | ActionCommand::ReleaseDoubleTap => {
@@ -258,7 +275,7 @@ impl KeyProcessor {
                     "type": "layerMomentary",
                     "layerId": layer_id
                 });
-                apply_action(vk_code, &action, false, config);
+                apply_action(vk_code, &action, false, config, None);
                 return HookAction::PassThrough;
             } else if state_guard.passthrough_trigger_keys.remove(&vk_code) {
                 state_guard.key_states.remove(&vk_code);

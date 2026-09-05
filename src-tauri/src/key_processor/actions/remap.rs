@@ -5,7 +5,13 @@ use crate::key_processor::utils::{
     suppress_active_modifiers_for_remap, restore_suppressed_modifiers,
 };
 
-pub fn apply(physical_vk: u16, action: &serde_json::Value, is_atomic: bool, config: &Config) {
+pub fn apply(
+    physical_vk: u16,
+    action: &serde_json::Value,
+    is_atomic: bool,
+    config: &Config,
+    source_layer: Option<&str>,
+) {
     if let Some(keys) = action.get("keys").and_then(|v| v.as_array()) {
         if !keys.is_empty() {
             let mut target_vks = Vec::new();
@@ -16,7 +22,7 @@ pub fn apply(physical_vk: u16, action: &serde_json::Value, is_atomic: bool, conf
             }
 
             // 1. リマップ送信前に、DefaultModifiers やパススルートリガーキーを一時無効化（UP送信）
-            let suppressed = suppress_active_modifiers_for_remap(physical_vk, &target_vks, config);
+            let suppressed = suppress_active_modifiers_for_remap(physical_vk, &target_vks, config, source_layer);
 
             // 2. リマップ先のキーを送信
             for &target_vk in &target_vks {

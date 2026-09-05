@@ -323,17 +323,35 @@ pub fn apply_layer_modifiers(old_layers: &[String], new_layers: &[String], confi
     }
 }
 
-/// リマップ対象のキー（target_vks）に含まれない、現在アクティブな修飾キーおよびパススルートリガーキーを取得し、一時的にUPを送信する
-pub fn suppress_active_modifiers_for_remap(physical_vk: u16, target_vks: &[u16], config: &Config) -> Vec<u16> {
-    let (active_layers, passthrough_keys) = {
+/// リマップ対象のキー（target_vks）に含まれない、リマップ定義元レイヤー（source_layer）の修飾キーおよびパススルートリガーキーを取得し、一時的にUPを送信する
+pub fn suppress_active_modifiers_for_remap(
+    physical_vk: u16,
+    target_vks: &[u16],
+    config: &Config,
+    source_layer: Option<&str>,
+) -> Vec<u16> {
+    let (active_layers, passthrough_keys, momentary_layers) = {
         let state = get_state().lock().unwrap();
-        (state.active_layers.clone(), state.passthrough_trigger_keys.clone())
+        (
+            state.active_layers.clone(),
+            state.passthrough_trigger_keys.clone(),
+            state.momentary_layers.clone(),
+        )
     };
 
-    let active_mods = compute_active_modifiers(&active_layers, config);
+    // サプレッション対象のレイヤーを特定:
+    // source_layer が指定されている場合はそのレイヤーのみを対象にする。
+    // （下位レイヤーのリマップを引き継いだ場合、上位モーメンタリレイヤーの修飾キーやトリガーキーを解除しないため）
+    let target_layers: Vec<String> = if let Some(src_layer) = source_layer {
+        vec![src_layer.to_string()]
+    } else {
+        active_layers
+    };
+
+    let active_mods = compute_active_modifiers(&target_layers, config);
     let mut to_suppress = Vec::new();
 
-    // 1. DefaultModifiers から、リマップ先キーに含まれていないものを収集
+    // 1. 対象レイヤーの DefaultModifiers から、リマップ先キーに含まれていないものを収集
     for &m in &active_mods {
         let is_target_mod = target_vks.contains(&m)
             || (m == VK_LSHIFT && target_vks.contains(&161))
@@ -347,16 +365,25 @@ pub fn suppress_active_modifiers_for_remap(physical_vk: u16, target_vks: &[u16],
     }
 
     // 2. パススルートリガーキーから、リマップ先キーに含まれていないものを収集
+    // source_layer が指定されている場合は、そのレイヤーを有効化しているトリガーキーのみをサプレス対象とする
     for &pt_vk in &passthrough_keys {
         if pt_vk != physical_vk {
-            let is_target_mod = target_vks.contains(&pt_vk)
-                || (is_shift(pt_vk) && target_vks.iter().any(|&k| is_shift(k)))
-                || (is_ctrl(pt_vk) && target_vks.iter().any(|&k| is_ctrl(k)))
-                || (is_alt(pt_vk) && target_vks.iter().any(|&k| is_alt(k)))
-                || (is_win(pt_vk) && target_vks.iter().any(|&k| is_win(k)));
+            let belongs_to_target = if let Some(src_layer) = source_layer {
+                momentary_layers.get(&pt_vk).map(|l| l.as_str()) == Some(src_layer)
+            } else {
+                true
+            };
 
-            if !is_target_mod && !to_suppress.contains(&pt_vk) {
-                to_suppress.push(pt_vk);
+            if belongs_to_target {
+                let is_target_mod = target_vks.contains(&pt_vk)
+                    || (is_shift(pt_vk) && target_vks.iter().any(|&k| is_shift(k)))
+                    || (is_ctrl(pt_vk) && target_vks.iter().any(|&k| is_ctrl(k)))
+                    || (is_alt(pt_vk) && target_vks.iter().any(|&k| is_alt(k)))
+                    || (is_win(pt_vk) && target_vks.iter().any(|&k| is_win(k)));
+
+                if !is_target_mod && !to_suppress.contains(&pt_vk) {
+                    to_suppress.push(pt_vk);
+                }
             }
         }
     }
@@ -579,24 +606,33 @@ mod tests {
         {
             let mut state = get_state().lock().unwrap();
             state.active_layers = vec!["base".to_string(), "shift".to_string()];
+            state.momentary_layers.insert(160, "shift".to_string());
             state.passthrough_trigger_keys.insert(160); // VK_LSHIFT
         }
 
         let target_vks = vec![0x25]; // Left arrow (Shiftは含まない)
-        let suppressed = suppress_active_modifiers_for_remap(0x48, &target_vks, &config);
+        // Shift レイヤー自身で定義されたリマップの場合、Shift (160) がサプレスされる
+        let suppressed = suppress_active_modifiers_for_remap(0x48, &target_vks, &config, Some("shift"));
 
         // Shift (VK_LSHIFT = 160) が抑制対象として取得されていること
         assert!(suppressed.contains(&160));
 
         // 2. リマップ先キーにShiftが含まれている場合は抑制対象にならないこと
         let target_vks_with_shift = vec![160, 0x25];
-        let suppressed_with_shift = suppress_active_modifiers_for_remap(0x48, &target_vks_with_shift, &config);
+        let suppressed_with_shift = suppress_active_modifiers_for_remap(0x48, &target_vks_with_shift, &config, Some("shift"));
         assert!(!suppressed_with_shift.contains(&160));
+
+        // 3. 下位レイヤー (base) で定義されたリマップを引き継いだ場合、
+        // 上位の Shift レイヤーの修飾キー・トリガーキーは抑制対象にならないこと
+        let suppressed_from_base = suppress_active_modifiers_for_remap(0x48, &target_vks, &config, Some("base"));
+        assert!(!suppressed_from_base.contains(&160));
+        assert!(suppressed_from_base.is_empty());
 
         // クリーンアップ
         {
             let mut state = get_state().lock().unwrap();
             state.active_layers = vec!["base".to_string()];
+            state.momentary_layers.clear();
             state.passthrough_trigger_keys.clear();
         }
     }
