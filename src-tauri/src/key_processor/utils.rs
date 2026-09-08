@@ -302,7 +302,7 @@ pub fn apply_layer_modifiers(old_layers: &[String], new_layers: &[String], confi
 
     let passthrough_keys = {
         let state = get_state().lock().unwrap();
-        state.passthrough_trigger_keys.clone()
+        state.get_passthrough_trigger_keys()
     };
 
     for &modifier in new_mods.difference(&old_mods) {
@@ -334,7 +334,7 @@ pub fn suppress_active_modifiers_for_remap(
         let state = get_state().lock().unwrap();
         (
             state.active_layers.clone(),
-            state.passthrough_trigger_keys.clone(),
+            state.get_passthrough_trigger_keys(),
             state.momentary_layers.clone(),
         )
     };
@@ -607,7 +607,13 @@ mod tests {
             let mut state = get_state().lock().unwrap();
             state.active_layers = vec!["base".to_string(), "shift".to_string()];
             state.momentary_layers.insert(160, "shift".to_string());
-            state.passthrough_trigger_keys.insert(160); // VK_LSHIFT
+            state.key_states.insert(
+                160,
+                crate::state_machine::KeyState::PassthroughHoldActive {
+                    activated_at: std::time::Instant::now(),
+                    last_repeated_at: std::time::Instant::now(),
+                },
+            );
         }
 
         let target_vks = vec![0x25]; // Left arrow (Shiftは含まない)
@@ -633,7 +639,7 @@ mod tests {
             let mut state = get_state().lock().unwrap();
             state.active_layers = vec!["base".to_string()];
             state.momentary_layers.clear();
-            state.passthrough_trigger_keys.clear();
+            state.key_states.clear();
         }
     }
 

@@ -3,7 +3,7 @@ pub mod utils;
 pub mod actions;
 
 use crate::Config;
-use crate::state_machine::{transition, ActionCommand, KeyState, TriggerEvent};
+use crate::state_machine::{transition, ActionCommand, KeyCapability, KeyState, TriggerEvent};
 use std::time::Instant;
 use state::get_state;
 use utils::{
@@ -48,13 +48,49 @@ impl KeyProcessor {
         Self::get_bindings_with_layer(vk, config, active_layers).map(|(_, b)| b)
     }
 
-    fn has_triggers(vk: u16, config: &Config, active_layers: &[String]) -> (bool, bool) {
-        if let Some(bindings) = Self::get_bindings(vk, config, active_layers) {
-            let has_hold = bindings.iter().any(|b| b.trigger == "hold");
-            let has_double_tap = bindings.iter().any(|b| b.trigger == "doubleTap");
-            (has_hold, has_double_tap)
+    pub fn determine_capability(
+        vk: u16,
+        config: &Config,
+        active_layers: &[String],
+    ) -> Option<KeyCapability> {
+        let bindings = Self::get_bindings(vk, config, active_layers)?;
+        if bindings.is_empty() {
+            return None;
+        }
+
+        let has_tap = bindings.iter().any(|b| b.trigger == "tap");
+        let has_double_tap = bindings.iter().any(|b| b.trigger == "doubleTap");
+        let hold_binding = bindings.iter().find(|b| b.trigger == "hold");
+        let has_hold = hold_binding.is_some();
+
+        let is_passthrough = if let Some(hb) = hold_binding {
+            if hb.action.get("type").and_then(|v| v.as_str()) == Some("layerMomentary") {
+                if let Some(layer_id) = hb.action.get("layerId").and_then(|v| v.as_str()) {
+                    config
+                        .layers
+                        .iter()
+                        .find(|l| l.id == layer_id)
+                        .and_then(|l| l.passthrough_trigger_key)
+                        .unwrap_or(false)
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
         } else {
-            (false, false)
+            false
+        };
+
+        match (has_tap, has_hold, has_double_tap) {
+            (true, true, true) => Some(KeyCapability::Full),
+            (true, true, false) => Some(KeyCapability::TapAndHold),
+            (true, false, true) => Some(KeyCapability::TapAndDoubleTap),
+            (true, false, false) => Some(KeyCapability::TapOnly),
+            (false, true, true) => Some(KeyCapability::HoldAndDoubleTap { is_passthrough }),
+            (false, true, false) => Some(KeyCapability::HoldOnly { is_passthrough }),
+            (false, false, true) => Some(KeyCapability::DoubleTapOnly),
+            (false, false, false) => None,
         }
     }
 
@@ -113,10 +149,15 @@ impl KeyProcessor {
                 } else {
                     send_key_atomic(vk);
                 }
-                // アトミック処理完了後、確実に物理キートラッカーから該当VKをクリーンアップ
                 get_state().lock().unwrap().pressed_vks.remove(&vk);
             }
             ActionCommand::ExecuteHold => {
+                if let Some((source_layer, action)) = Self::get_action_with_layer(vk, "hold", config, &active_layers) {
+                    apply_action(vk, action, false, config, Some(source_layer));
+                }
+            }
+            ActionCommand::ExecutePassthroughHoldDelayed => {
+                send_key_raw(vk, false);
                 if let Some((source_layer, action)) = Self::get_action_with_layer(vk, "hold", config, &active_layers) {
                     apply_action(vk, action, false, config, Some(source_layer));
                 }
@@ -159,14 +200,8 @@ impl KeyProcessor {
                     send_key_raw(target, true);
                 }
 
-                // リマップ送信時に一時解除されていた修飾キーがあれば復元
                 if let Some(suppressed) = state.suppressed_modifiers_for_key.remove(&vk) {
                     restore_suppressed_modifiers(&suppressed);
-                }
-
-                // パススルートリガーキーがリリースされたならOS上でもUPを送信
-                if state.passthrough_trigger_keys.remove(&vk) {
-                    send_key_raw(vk, true);
                 }
 
                 if let Some(layer_id) = state.momentary_layers.remove(&vk) {
@@ -192,38 +227,12 @@ impl KeyProcessor {
                             return crate::state_machine::InterruptBehavior::ForceHold;
                         }
                     } else if !has_tap {
-                        // tapが設定されていないキー（Shift等）で他のキーが押された場合は自然に ForceHold にする
                         return crate::state_machine::InterruptBehavior::ForceHold;
                     }
                 }
             }
         }
         crate::state_machine::InterruptBehavior::ForceTap
-    }
-
-    fn is_passthrough_momentary_key(
-        vk_code: u16,
-        config: &Config,
-        active_layers: &[String],
-    ) -> Option<String> {
-        if let Some(bindings) = Self::get_bindings(vk_code, config, active_layers) {
-            let has_tap = bindings.iter().any(|b| b.trigger == "tap");
-            let has_double_tap = bindings.iter().any(|b| b.trigger == "doubleTap");
-            if !has_tap && !has_double_tap {
-                if let Some(hold_binding) = bindings.iter().find(|b| b.trigger == "hold") {
-                    if hold_binding.action.get("type").and_then(|v| v.as_str()) == Some("layerMomentary") {
-                        if let Some(layer_id) = hold_binding.action.get("layerId").and_then(|v| v.as_str()) {
-                            if let Some(layer) = config.layers.iter().find(|l| l.id == layer_id) {
-                                if layer.passthrough_trigger_key.unwrap_or(false) {
-                                    return Some(layer_id.to_string());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        None
     }
 
     pub fn process_key(vk_code: u16, is_down: bool, config: &Config) -> HookAction {
@@ -234,12 +243,12 @@ impl KeyProcessor {
             let active_layers = state_guard.active_layers.clone();
             for (&other_vk, other_state) in state_guard.key_states.iter_mut() {
                 if other_vk != vk_code {
-                    let (has_hold, has_double_tap) = Self::has_triggers(other_vk, config, &active_layers);
+                    let cap = Self::determine_capability(other_vk, config, &active_layers)
+                        .unwrap_or(KeyCapability::TapOnly);
                     let (new_state, cmd) = transition(
                         *other_state,
                         TriggerEvent::OtherKeyPressed,
-                        has_hold,
-                        has_double_tap,
+                        cap,
                         Self::get_interrupt_behavior(other_vk, config, &active_layers),
                         Instant::now(),
                     );
@@ -254,58 +263,13 @@ impl KeyProcessor {
             state_guard = get_state().lock().unwrap();
         }
 
-        // passthrough_trigger_key の即時処理チェック (単押し/ダブルタップ設定がないモーメンタリキー)
-        let passthrough_layer = Self::is_passthrough_momentary_key(vk_code, config, &state_guard.active_layers);
-        if let Some(layer_id) = passthrough_layer {
-            if is_down {
-                let is_already_active = state_guard.momentary_layers.contains_key(&vk_code);
-                if is_already_active {
-                    return HookAction::PassThrough;
-                }
-                state_guard.passthrough_trigger_keys.insert(vk_code);
-                state_guard.key_states.insert(
-                    vk_code,
-                    KeyState::HoldActive {
-                        activated_at: Instant::now(),
-                        last_repeated_at: Instant::now(),
-                    },
-                );
-                drop(state_guard);
-                let action = serde_json::json!({
-                    "type": "layerMomentary",
-                    "layerId": layer_id
-                });
-                apply_action(vk_code, &action, false, config, None);
-                return HookAction::PassThrough;
-            } else if state_guard.passthrough_trigger_keys.remove(&vk_code) {
-                state_guard.key_states.remove(&vk_code);
-                drop(state_guard);
-                Self::execute_action(ActionCommand::ReleaseHold, vk_code, config);
-                return HookAction::PassThrough;
-            }
-        }
-
-        // すでに passthrough_trigger_keys に登録されているキーの離上処理
-        if !is_down && state_guard.passthrough_trigger_keys.remove(&vk_code) {
-            state_guard.key_states.remove(&vk_code);
-            drop(state_guard);
-            Self::execute_action(ActionCommand::ReleaseHold, vk_code, config);
-            return HookAction::PassThrough;
-        }
-
-        // 2. Check if THIS key has bindings OR is currently being tracked
         let is_tracked = state_guard.key_states.contains_key(&vk_code);
-        let has_any_binding = Self::get_bindings(vk_code, config, &state_guard.active_layers)
-            .map(|b| !b.is_empty())
-            .unwrap_or(false);
+        let capability = Self::determine_capability(vk_code, config, &state_guard.active_layers);
 
-        if !has_any_binding && !is_tracked {
-            // No bindings for this key, let OS handle it
+        if capability.is_none() && !is_tracked {
             return HookAction::PassThrough;
         }
 
-        // 3. Process THIS key
-        let (has_hold, has_double_tap) = Self::has_triggers(vk_code, config, &state_guard.active_layers);
         let current_state = state_guard
             .key_states
             .get(&vk_code)
@@ -314,7 +278,7 @@ impl KeyProcessor {
 
         if is_down {
             match current_state {
-                KeyState::HoldActive { .. } => {
+                KeyState::HoldActive { .. } | KeyState::PassthroughHoldActive { .. } => {
                     if Self::get_repeat_interval(vk_code, "hold", config, &state_guard.active_layers).is_some() {
                         return HookAction::Block;
                     }
@@ -334,9 +298,12 @@ impl KeyProcessor {
             TriggerEvent::Released
         };
 
+        let cap = capability.unwrap_or(KeyCapability::TapOnly);
         let interrupt_behavior = Self::get_interrupt_behavior(vk_code, config, &state_guard.active_layers);
-        let (new_state, cmd) = transition(current_state, event, has_hold, has_double_tap, interrupt_behavior, Instant::now());
+        let (new_state, cmd) = transition(current_state, event, cap, interrupt_behavior, Instant::now());
         log::debug!("DEBUG[transition]: vk={} event={:?} state {:?} -> {:?} (cmd: {:?})", vk_code, event, current_state, new_state, cmd);
+
+        let is_passthrough = new_state.is_passthrough() || current_state.is_passthrough();
 
         if new_state == KeyState::Idle {
             state_guard.key_states.remove(&vk_code);
@@ -348,14 +315,18 @@ impl KeyProcessor {
 
         Self::execute_action(cmd, vk_code, config);
 
-        HookAction::Block
+        if is_passthrough {
+            HookAction::PassThrough
+        } else {
+            HookAction::Block
+        }
     }
 
     pub fn start_timeout_worker(app: tauri::AppHandle) {
         use tauri::Manager;
         std::thread::spawn(move || {
             let mut state_guard = crate::key_processor::state::get_state_wrapper().mutex.lock().unwrap();
-            
+
             loop {
                 if !crate::hook::REMAP_ENABLED.load(std::sync::atomic::Ordering::SeqCst) {
                     let result = crate::key_processor::state::get_state_wrapper()
@@ -386,7 +357,7 @@ impl KeyProcessor {
                             let timing = Self::get_timing(vk, "doubleTap", &config, &active_layers).unwrap_or(200);
                             target_time_opt = Some(*first_released_at + std::time::Duration::from_millis(timing as u64));
                         }
-                        KeyState::HoldActive { last_repeated_at, .. } => {
+                        KeyState::HoldActive { last_repeated_at, .. } | KeyState::PassthroughHoldActive { last_repeated_at, .. } => {
                             if let Some(interval) = Self::get_repeat_interval(vk, "hold", &config, &active_layers) {
                                 target_time_opt = Some(*last_repeated_at + std::time::Duration::from_millis(interval as u64));
                                 is_custom_repeat = true;
@@ -403,14 +374,14 @@ impl KeyProcessor {
 
                     if let Some(target_time) = target_time_opt {
                         if now >= target_time {
-                            let (has_hold, has_double_tap) = Self::has_triggers(vk, &config, &active_layers);
+                            let cap = Self::determine_capability(vk, &config, &active_layers)
+                                .unwrap_or(KeyCapability::TapOnly);
                             let event = if is_custom_repeat { TriggerEvent::CustomRepeat } else { TriggerEvent::Timeout };
                             let interrupt_behavior = Self::get_interrupt_behavior(vk, &config, &active_layers);
                             let (new_state, cmd) = transition(
                                 *key_state,
                                 event,
-                                has_hold,
-                                has_double_tap,
+                                cap,
                                 interrupt_behavior,
                                 now,
                             );
@@ -428,7 +399,6 @@ impl KeyProcessor {
                 }
                 state_guard.key_states.retain(|_, s| *s != KeyState::Idle);
 
-                // アイドル時の自己修復判定 (キー入力が完全に落ち着いている時のみ実行)
                 const IDLE_RECONCILE_THRESHOLD: std::time::Duration = std::time::Duration::from_millis(1500);
                 let should_reconcile = if !state_guard.pressed_vks.is_empty() || !state_guard.momentary_layers.is_empty() {
                     if let Some(last_act) = crate::key_processor::state::get_last_key_activity() {
@@ -447,23 +417,19 @@ impl KeyProcessor {
                 } else {
                     false
                 };
-                
-                // 一旦ロックを手放してコマンド実行
+
                 drop(state_guard);
                 for (vk, cmd) in cmds {
                     Self::execute_action(cmd, vk, &config);
                 }
 
-                // アイドルかつスタックキーがある場合のみ安全に自己修復
                 if should_reconcile {
                     #[cfg(windows)]
                     crate::key_processor::utils::reconcile_physical_keys();
                 }
-                
-                // 再びロックを取得して待機
+
                 state_guard = crate::key_processor::state::get_state_wrapper().mutex.lock().unwrap();
-                
-                // 次のループのための待機
+
                 if let Some(timeout) = next_timeout {
                     let wait_dur = timeout.saturating_duration_since(Instant::now());
                     if wait_dur > std::time::Duration::ZERO {
@@ -478,5 +444,167 @@ impl KeyProcessor {
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex as StdMutex;
+
+    static TEST_MUTEX: StdMutex<()> = StdMutex::new(());
+
+    fn create_test_config() -> Config {
+        let mut config = crate::get_default_config();
+        config.layers.push(crate::Layer {
+            id: "shift".to_string(),
+            passthrough_trigger_key: Some(true),
+            default_modifiers: Some(serde_json::json!([160])),
+            bindings: std::collections::HashMap::new(),
+        });
+        config.layer_order.push("shift".to_string());
+        config
+    }
+
+    #[test]
+    fn test_determine_capability() {
+        let mut config = create_test_config();
+
+        {
+            let base_layer = config.layers.iter_mut().find(|l| l.id == "base").unwrap();
+            base_layer.bindings.insert("65".to_string(), vec![crate::Binding {
+                trigger: "tap".to_string(),
+                action: serde_json::json!({ "type": "remap", "keys": [66] }),
+                timing_ms: None,
+                interrupt_behavior: None,
+            }]);
+        }
+
+        let cap = KeyProcessor::determine_capability(65, &config, &["base".to_string()]);
+        assert_eq!(cap, Some(KeyCapability::TapOnly));
+
+        {
+            let base_layer = config.layers.iter_mut().find(|l| l.id == "base").unwrap();
+            base_layer.bindings.insert("160".to_string(), vec![crate::Binding {
+                trigger: "hold".to_string(),
+                action: serde_json::json!({ "type": "layerMomentary", "layerId": "shift" }),
+                timing_ms: None,
+                interrupt_behavior: None,
+            }]);
+        }
+
+        let cap = KeyProcessor::determine_capability(160, &config, &["base".to_string()]);
+        assert_eq!(cap, Some(KeyCapability::HoldOnly { is_passthrough: true }));
+
+        {
+            let base_layer = config.layers.iter_mut().find(|l| l.id == "base").unwrap();
+            base_layer.bindings.insert("29".to_string(), vec![
+                crate::Binding {
+                    trigger: "tap".to_string(),
+                    action: serde_json::json!({ "type": "remap", "keys": [29] }),
+                    timing_ms: None,
+                    interrupt_behavior: None,
+                },
+                crate::Binding {
+                    trigger: "hold".to_string(),
+                    action: serde_json::json!({ "type": "layerMomentary", "layerId": "shift" }),
+                    timing_ms: None,
+                    interrupt_behavior: None,
+                },
+            ]);
+        }
+
+        let cap = KeyProcessor::determine_capability(29, &config, &["base".to_string()]);
+        assert_eq!(cap, Some(KeyCapability::TapAndHold));
+    }
+
+    #[test]
+    fn test_process_key_fastpath_passthrough_momentary() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let mut config = create_test_config();
+        {
+            let base_layer = config.layers.iter_mut().find(|l| l.id == "base").unwrap();
+            base_layer.bindings.insert("160".to_string(), vec![crate::Binding {
+                trigger: "hold".to_string(),
+                action: serde_json::json!({ "type": "layerMomentary", "layerId": "shift" }),
+                timing_ms: None,
+                interrupt_behavior: None,
+            }]);
+        }
+
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()];
+            state.key_states.clear();
+            state.momentary_layers.clear();
+        }
+
+        let action_down = KeyProcessor::process_key(160, true, &config);
+        assert_eq!(action_down, HookAction::PassThrough);
+
+        {
+            let state = get_state().lock().unwrap();
+            assert!(matches!(state.key_states.get(&160), Some(KeyState::PassthroughHoldActive { .. })));
+            assert!(state.active_layers.contains(&"shift".to_string()));
+            assert_eq!(state.get_passthrough_trigger_keys().contains(&160), true);
+        }
+
+        let action_up = KeyProcessor::process_key(160, false, &config);
+        assert_eq!(action_up, HookAction::PassThrough);
+
+        {
+            let state = get_state().lock().unwrap();
+            assert!(!state.key_states.contains_key(&160));
+            assert!(!state.active_layers.contains(&"shift".to_string()));
+            assert_eq!(state.get_passthrough_trigger_keys().contains(&160), false);
+        }
+    }
+
+    #[test]
+    fn test_process_key_non_passthrough_momentary_muhenkan() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let mut config = create_test_config();
+        config.layers.push(crate::Layer {
+            id: "num".to_string(),
+            passthrough_trigger_key: Some(false),
+            default_modifiers: None,
+            bindings: std::collections::HashMap::new(),
+        });
+        config.layer_order.push("num".to_string());
+
+        {
+            let base_layer = config.layers.iter_mut().find(|l| l.id == "base").unwrap();
+            base_layer.bindings.insert("29".to_string(), vec![crate::Binding {
+                trigger: "hold".to_string(),
+                action: serde_json::json!({ "type": "layerMomentary", "layerId": "num" }),
+                timing_ms: Some(200),
+                interrupt_behavior: Some("forceHold".to_string()),
+            }]);
+        }
+
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()];
+            state.key_states.clear();
+            state.momentary_layers.clear();
+        }
+
+        let action_down = KeyProcessor::process_key(29, true, &config);
+        assert_eq!(action_down, HookAction::Block);
+
+        {
+            let state = get_state().lock().unwrap();
+            assert!(matches!(state.key_states.get(&29), Some(KeyState::WaitingForHold { .. })));
+            assert!(!state.active_layers.contains(&"num".to_string()));
+        }
+
+        let action_up = KeyProcessor::process_key(29, false, &config);
+        assert_eq!(action_up, HookAction::Block);
+
+        {
+            let state = get_state().lock().unwrap();
+            assert!(!state.key_states.contains_key(&29));
+            assert!(!state.active_layers.contains(&"num".to_string()));
+        }
     }
 }

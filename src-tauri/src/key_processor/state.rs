@@ -8,8 +8,22 @@ pub struct ProcessorState {
     pub pressed_vks: HashMap<u16, Vec<u16>>,
     pub momentary_layers: HashMap<u16, String>,
     pub saved_mouse_pos: Option<(i32, i32)>,
-    pub passthrough_trigger_keys: HashSet<u16>,
     pub suppressed_modifiers_for_key: HashMap<u16, Vec<u16>>,
+}
+
+impl ProcessorState {
+    pub fn get_passthrough_trigger_keys(&self) -> HashSet<u16> {
+        self.key_states
+            .iter()
+            .filter_map(|(&vk, s)| {
+                if matches!(s, KeyState::PassthroughHoldActive { .. }) {
+                    Some(vk)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
 }
 
 pub struct StateWrapper {
@@ -27,7 +41,6 @@ pub fn get_state_wrapper() -> &'static StateWrapper {
             pressed_vks: HashMap::new(),
             momentary_layers: HashMap::new(),
             saved_mouse_pos: None,
-            passthrough_trigger_keys: HashSet::new(),
             suppressed_modifiers_for_key: HashMap::new(),
         }),
         cvar: Condvar::new(),
