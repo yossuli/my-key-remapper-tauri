@@ -128,75 +128,82 @@ pub fn transition(
         }
 
         (KeyState::WaitingForHold { .. }, TriggerEvent::Timeout) => {
-            if capability.has_hold() {
-                if capability.is_passthrough() {
-                    (
-                        KeyState::PassthroughHoldActive {
-                            activated_at: now,
-                            last_repeated_at: now,
-                        },
-                        ActionCommand::ExecutePassthroughHoldDelayed,
-                    )
-                } else {
-                    (
-                        KeyState::HoldActive {
-                            activated_at: now,
-                            last_repeated_at: now,
-                        },
-                        ActionCommand::ExecuteHold,
-                    )
-                }
-            } else {
-                (
-                    KeyState::TapActive {
+            match capability {
+                KeyCapability::HoldOnly { is_passthrough: true }
+                | KeyCapability::HoldAndDoubleTap { is_passthrough: true } => (
+                    KeyState::PassthroughHoldActive {
                         activated_at: now,
                         last_repeated_at: now,
                     },
-                    ActionCommand::ExecuteTap,
-                )
-            }
-        }
-        (KeyState::WaitingForHold { .. }, TriggerEvent::OtherKeyPressed) => {
-            match interrupt_behavior {
-                InterruptBehavior::ForceTap => (
+                    ActionCommand::ExecutePassthroughHoldDelayed,
+                ),
+                KeyCapability::HoldOnly { is_passthrough: false }
+                | KeyCapability::HoldAndDoubleTap { is_passthrough: false }
+                | KeyCapability::TapAndHold
+                | KeyCapability::Full => (
+                    KeyState::HoldActive {
+                        activated_at: now,
+                        last_repeated_at: now,
+                    },
+                    ActionCommand::ExecuteHold,
+                ),
+                KeyCapability::TapOnly
+                | KeyCapability::TapAndDoubleTap
+                | KeyCapability::DoubleTapOnly => (
                     KeyState::TapActive {
                         activated_at: now,
                         last_repeated_at: now,
                     },
                     ActionCommand::ExecuteTap,
                 ),
-                InterruptBehavior::ForceHold => {
-                    if capability.is_passthrough() {
-                        (
-                            KeyState::PassthroughHoldActive {
-                                activated_at: now,
-                                last_repeated_at: now,
-                            },
-                            ActionCommand::ExecutePassthroughHoldDelayed,
-                        )
-                    } else {
-                        (
-                            KeyState::HoldActive {
-                                activated_at: now,
-                                last_repeated_at: now,
-                            },
-                            ActionCommand::ExecuteHold,
-                        )
-                    }
-                }
-                InterruptBehavior::Ignore => (state, ActionCommand::None),
+            }
+        }
+        (KeyState::WaitingForHold { .. }, TriggerEvent::OtherKeyPressed) => {
+            match (interrupt_behavior, capability) {
+                (InterruptBehavior::ForceTap, _) => (
+                    KeyState::TapActive {
+                        activated_at: now,
+                        last_repeated_at: now,
+                    },
+                    ActionCommand::ExecuteTap,
+                ),
+                (
+                    InterruptBehavior::ForceHold,
+                    KeyCapability::HoldOnly { is_passthrough: true }
+                    | KeyCapability::HoldAndDoubleTap { is_passthrough: true },
+                ) => (
+                    KeyState::PassthroughHoldActive {
+                        activated_at: now,
+                        last_repeated_at: now,
+                    },
+                    ActionCommand::ExecutePassthroughHoldDelayed,
+                ),
+                (InterruptBehavior::ForceHold, _) => (
+                    KeyState::HoldActive {
+                        activated_at: now,
+                        last_repeated_at: now,
+                    },
+                    ActionCommand::ExecuteHold,
+                ),
+                (InterruptBehavior::Ignore, _) => (state, ActionCommand::None),
             }
         }
         (KeyState::WaitingForHold { .. }, TriggerEvent::Released) => {
-            if capability.has_double_tap() {
-                (
+            match capability {
+                KeyCapability::Full
+                | KeyCapability::TapAndDoubleTap
+                | KeyCapability::HoldAndDoubleTap { .. }
+                | KeyCapability::DoubleTapOnly => (
                     KeyState::WaitingForDoubleTap {
                         first_released_at: now,
                     },
                     ActionCommand::None,
-                )
-            } else {
-                (KeyState::Idle, ActionCommand::ExecuteTapAtomic)
+                ),
+                KeyCapability::TapOnly
+                | KeyCapability::TapAndHold
+                | KeyCapability::HoldOnly { .. } => {
+                    (KeyState::Idle, ActionCommand::ExecuteTapAtomic)
+                }
             }
         }
 

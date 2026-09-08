@@ -224,30 +224,27 @@ pub fn release_all_virtual_keys() {
 pub fn reconcile_physical_keys() {
     use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 
-    // 自己修復の対象は「OSにDOWNを送信したまま戻っていないキー (pressed_vks)」と
-    // 「解除されなくなったモメンタリレイヤー (momentary_layers)」のみに限定する。
-    // key_states (ステートマシン) は WaitingForDoubleTap など物理キーが離されているのが
-    // 正常な待機状態を含むため、絶対にここから削除してはならない！
-    let tracked_keys: Vec<u16> = {
+    let tracked_keys: std::collections::HashSet<u16> = {
         let state = get_state().lock().unwrap();
-        let mut keys: std::collections::HashSet<u16> = state.pressed_vks.keys().copied().collect();
-        for &k in state.momentary_layers.keys() {
-            keys.insert(k);
-        }
-        keys.into_iter().collect()
+        state
+            .pressed_vks
+            .keys()
+            .chain(state.momentary_layers.keys())
+            .copied()
+            .collect()
     };
 
     if tracked_keys.is_empty() {
         return;
     }
 
-    let mut released_physical_keys = Vec::new();
-    for vk in tracked_keys {
-        let state_val = unsafe { GetAsyncKeyState(vk as i32) };
-        if (state_val as u16 & 0x8000) == 0 {
-            released_physical_keys.push(vk);
-        }
-    }
+    let released_physical_keys: Vec<u16> = tracked_keys
+        .into_iter()
+        .filter(|&vk| {
+            let state_val = unsafe { GetAsyncKeyState(vk as i32) };
+            (state_val as u16 & 0x8000) == 0
+        })
+        .collect();
 
     if released_physical_keys.is_empty() {
         return;
@@ -273,23 +270,30 @@ pub fn reconcile_physical_keys() {
 }
 
 
+fn is_modifier_subsumed(vk: u16, target_vks: &[u16]) -> bool {
+    target_vks.contains(&vk)
+        || (is_shift(vk) && target_vks.iter().any(|&k| is_shift(k)))
+        || (is_ctrl(vk) && target_vks.iter().any(|&k| is_ctrl(k)))
+        || (is_alt(vk) && target_vks.iter().any(|&k| is_alt(k)))
+        || (is_win(vk) && target_vks.iter().any(|&k| is_win(k)))
+}
+
 pub fn compute_active_modifiers(active_layers: &[String], config: &Config) -> HashSet<u16> {
     let mut mods = HashSet::new();
+    let mod_mappings = [
+        ("shift", VK_LSHIFT),
+        ("ctrl", VK_LCONTROL),
+        ("alt", VK_LMENU),
+        ("win", VK_LWIN),
+    ];
+
     for layer_id in active_layers {
-        if let Some(layer) = config.layers.iter().find(|l| &l.id == layer_id) {
-            if let Some(def_mods) = &layer.default_modifiers {
-                if let Some(shift) = def_mods.get("shift").and_then(|v| v.as_bool()) {
-                    if shift { mods.insert(VK_LSHIFT); }
-                }
-                if let Some(ctrl) = def_mods.get("ctrl").and_then(|v| v.as_bool()) {
-                    if ctrl { mods.insert(VK_LCONTROL); }
-                }
-                if let Some(alt) = def_mods.get("alt").and_then(|v| v.as_bool()) {
-                    if alt { mods.insert(VK_LMENU); }
-                }
-                if let Some(win) = def_mods.get("win").and_then(|v| v.as_bool()) {
-                    if win { mods.insert(VK_LWIN); }
-                }
+        let Some(layer) = config.layers.iter().find(|l| &l.id == layer_id) else { continue };
+        let Some(def_mods) = &layer.default_modifiers else { continue };
+
+        for (name, vk) in mod_mappings {
+            if def_mods.get(name).and_then(|v| v.as_bool()).unwrap_or(false) {
+                mods.insert(vk);
             }
         }
     }
@@ -315,15 +319,14 @@ pub fn apply_layer_modifiers(old_layers: &[String], new_layers: &[String], confi
         };
 
         if !already_physically_down {
-            send_key_raw(modifier, false); // Send DOWN for new modifiers
+            send_key_raw(modifier, false);
         }
     }
     for &modifier in old_mods.difference(&new_mods) {
-        send_key_raw(modifier, true);  // Send UP for removed modifiers
+        send_key_raw(modifier, true);
     }
 }
 
-/// リマップ対象のキー（target_vks）に含まれない、リマップ定義元レイヤー（source_layer）の修飾キーおよびパススルートリガーキーを取得し、一時的にUPを送信する
 pub fn suppress_active_modifiers_for_remap(
     physical_vk: u16,
     target_vks: &[u16],
@@ -339,56 +342,33 @@ pub fn suppress_active_modifiers_for_remap(
         )
     };
 
-    // サプレッション対象のレイヤーを特定:
-    // source_layer が指定されている場合はそのレイヤーのみを対象にする。
-    // （下位レイヤーのリマップを引き継いだ場合、上位モーメンタリレイヤーの修飾キーやトリガーキーを解除しないため）
-    let target_layers: Vec<String> = if let Some(src_layer) = source_layer {
-        vec![src_layer.to_string()]
-    } else {
-        active_layers
+    let target_layers: Vec<String> = match source_layer {
+        Some(src_layer) => vec![src_layer.to_string()],
+        None => active_layers,
     };
 
     let active_mods = compute_active_modifiers(&target_layers, config);
     let mut to_suppress = Vec::new();
 
-    // 1. 対象レイヤーの DefaultModifiers から、リマップ先キーに含まれていないものを収集
     for &m in &active_mods {
-        let is_target_mod = target_vks.contains(&m)
-            || (m == VK_LSHIFT && target_vks.contains(&161))
-            || (m == VK_LCONTROL && target_vks.contains(&163))
-            || (m == VK_LMENU && target_vks.contains(&165))
-            || (m == VK_LWIN && target_vks.contains(&92));
-
-        if !is_target_mod && !to_suppress.contains(&m) {
+        if !is_modifier_subsumed(m, target_vks) && !to_suppress.contains(&m) {
             to_suppress.push(m);
         }
     }
 
-    // 2. パススルートリガーキーから、リマップ先キーに含まれていないものを収集
-    // source_layer が指定されている場合は、そのレイヤーを有効化しているトリガーキーのみをサプレス対象とする
     for &pt_vk in &passthrough_keys {
         if pt_vk != physical_vk {
-            let belongs_to_target = if let Some(src_layer) = source_layer {
-                momentary_layers.get(&pt_vk).map(|l| l.as_str()) == Some(src_layer)
-            } else {
-                true
+            let belongs_to_target = match source_layer {
+                Some(src_layer) => momentary_layers.get(&pt_vk).map(|l| l.as_str()) == Some(src_layer),
+                None => true,
             };
 
-            if belongs_to_target {
-                let is_target_mod = target_vks.contains(&pt_vk)
-                    || (is_shift(pt_vk) && target_vks.iter().any(|&k| is_shift(k)))
-                    || (is_ctrl(pt_vk) && target_vks.iter().any(|&k| is_ctrl(k)))
-                    || (is_alt(pt_vk) && target_vks.iter().any(|&k| is_alt(k)))
-                    || (is_win(pt_vk) && target_vks.iter().any(|&k| is_win(k)));
-
-                if !is_target_mod && !to_suppress.contains(&pt_vk) {
-                    to_suppress.push(pt_vk);
-                }
+            if belongs_to_target && !is_modifier_subsumed(pt_vk, target_vks) && !to_suppress.contains(&pt_vk) {
+                to_suppress.push(pt_vk);
             }
         }
     }
 
-    // 一時的に UP を送信して無効化
     for &m in &to_suppress {
         log::debug!("suppress modifier before remap: vk={}", m);
         send_key_raw(m, true);
@@ -402,7 +382,6 @@ fn is_ctrl(vk: u16) -> bool { vk == 17 || vk == 162 || vk == 163 }
 fn is_alt(vk: u16) -> bool { vk == 18 || vk == 164 || vk == 165 }
 fn is_win(vk: u16) -> bool { vk == 91 || vk == 92 }
 
-/// 一時的にUPされていた修飾キー・トリガーキーを再度DOWNにして復元する
 pub fn restore_suppressed_modifiers(suppressed: &[u16]) {
     for &m in suppressed {
         log::debug!("restore modifier after remap: vk={}", m);
@@ -510,9 +489,7 @@ pub fn send_mouse_wheel(delta_y: i32, delta_x: i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex as StdMutex;
-
-    static TEST_LOCK: StdMutex<()> = StdMutex::new(());
+    use crate::key_processor::state::TEST_LOCK;
 
     #[test]
     fn test_pressed_vks_empty_entry_removed() {

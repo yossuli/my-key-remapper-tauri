@@ -7,7 +7,7 @@ use crate::state_machine::{transition, ActionCommand, KeyCapability, KeyState, T
 use std::time::Instant;
 use state::get_state;
 use utils::{
-    send_key_down, send_key_up, send_key_raw, send_key_atomic, is_modifier, apply_layer_modifiers,
+    send_key_raw, send_key_atomic, apply_layer_modifiers,
     restore_suppressed_modifiers,
 };
 use actions::apply_action;
@@ -16,6 +16,19 @@ use actions::apply_action;
 pub enum HookAction {
     Block,
     PassThrough,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum TimerAction {
+    Trigger(TriggerEvent),
+    Pending(Instant),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ReconcileAction {
+    Execute,
+    WaitUntil(Instant),
+    None,
 }
 
 pub struct KeyProcessor;
@@ -63,24 +76,16 @@ impl KeyProcessor {
         let hold_binding = bindings.iter().find(|b| b.trigger == "hold");
         let has_hold = hold_binding.is_some();
 
-        let is_passthrough = if let Some(hb) = hold_binding {
-            if hb.action.get("type").and_then(|v| v.as_str()) == Some("layerMomentary") {
-                if let Some(layer_id) = hb.action.get("layerId").and_then(|v| v.as_str()) {
-                    config
-                        .layers
-                        .iter()
-                        .find(|l| l.id == layer_id)
-                        .and_then(|l| l.passthrough_trigger_key)
-                        .unwrap_or(false)
+        let is_passthrough = hold_binding
+            .and_then(|hb| {
+                if hb.action.get("type")?.as_str()? == "layerMomentary" {
+                    let layer_id = hb.action.get("layerId")?.as_str()?;
+                    config.layers.iter().find(|l| l.id == layer_id)?.passthrough_trigger_key
                 } else {
-                    false
+                    None
                 }
-            } else {
-                false
-            }
-        } else {
-            false
-        };
+            })
+            .unwrap_or(false);
 
         match (has_tap, has_hold, has_double_tap) {
             (true, true, true) => Some(KeyCapability::Full),
@@ -163,26 +168,8 @@ impl KeyProcessor {
                 }
             }
             ActionCommand::ExecuteHoldRepeat => {
-                if let Some(action) = Self::get_action(vk, "hold", config, &active_layers) {
-                    if action.get("type").and_then(|v| v.as_str()) == Some("remap") {
-                        if action.get("repeat").and_then(|v| v.as_bool()).unwrap_or(false) {
-                            if let Some(keys) = action.get("keys").and_then(|v| v.as_array()) {
-                                let mut target_vks = Vec::new();
-                                for k in keys {
-                                    if let Some(k_vk) = k.as_u64() {
-                                        target_vks.push(k_vk as u16);
-                                    }
-                                }
-
-                                for &target_vk in &target_vks {
-                                    if !is_modifier(target_vk) {
-                                        send_key_down(vk, target_vk);
-                                        send_key_up(vk, target_vk);
-                                    }
-                                }
-                            }
-                        }
-                    }
+                if let Some((_, action)) = Self::get_action_with_layer(vk, "hold", config, &active_layers) {
+                    actions::apply_repeat(vk, action);
                 }
             }
             ActionCommand::ExecuteDoubleTap => {
@@ -191,48 +178,50 @@ impl KeyProcessor {
                 }
             }
             ActionCommand::ReleaseTap | ActionCommand::ReleaseHold | ActionCommand::ReleaseDoubleTap => {
-                #[cfg(windows)]
-                crate::hook::set_scroll_mode_state(false, 1.0, false, "both");
-
-                let mut state = get_state().lock().unwrap();
-                let vks = state.pressed_vks.remove(&vk).unwrap_or_default();
-                for target in vks {
-                    send_key_raw(target, true);
-                }
-
-                if let Some(suppressed) = state.suppressed_modifiers_for_key.remove(&vk) {
-                    restore_suppressed_modifiers(&suppressed);
-                }
-
-                if let Some(layer_id) = state.momentary_layers.remove(&vk) {
-                    let old_layers = state.active_layers.clone();
-                    state.active_layers.retain(|l| l != &layer_id);
-                    let new_layers = state.active_layers.clone();
-                    drop(state);
-                    apply_layer_modifiers(&old_layers, &new_layers, config);
-                    return;
-                }
+                Self::release_key(vk, config);
             }
         }
     }
-    fn get_interrupt_behavior(vk_code: u16, config: &Config, active_layers: &[String]) -> crate::state_machine::InterruptBehavior {
-        if let Some(bindings) = Self::get_bindings(vk_code, config, active_layers) {
-            let has_tap = bindings.iter().any(|b| b.trigger == "tap");
-            for b in bindings {
-                if b.trigger == "hold" {
-                    if let Some(behavior) = &b.interrupt_behavior {
-                        if behavior == "ignore" {
-                            return crate::state_machine::InterruptBehavior::Ignore;
-                        } else if behavior == "forceHold" {
-                            return crate::state_machine::InterruptBehavior::ForceHold;
-                        }
-                    } else if !has_tap {
-                        return crate::state_machine::InterruptBehavior::ForceHold;
-                    }
-                }
-            }
+
+    fn release_key(vk: u16, config: &Config) {
+        #[cfg(windows)]
+        crate::hook::set_scroll_mode_state(false, 1.0, false, "both");
+
+        let mut state = get_state().lock().unwrap();
+        let vks = state.pressed_vks.remove(&vk).unwrap_or_default();
+        for target in vks {
+            send_key_raw(target, true);
         }
-        crate::state_machine::InterruptBehavior::ForceTap
+
+        if let Some(suppressed) = state.suppressed_modifiers_for_key.remove(&vk) {
+            restore_suppressed_modifiers(&suppressed);
+        }
+
+        if let Some(layer_id) = state.momentary_layers.remove(&vk) {
+            let old_layers = state.active_layers.clone();
+            state.active_layers.retain(|l| l != &layer_id);
+            let new_layers = state.active_layers.clone();
+            drop(state);
+            apply_layer_modifiers(&old_layers, &new_layers, config);
+        }
+    }
+    fn get_interrupt_behavior(vk_code: u16, config: &Config, active_layers: &[String]) -> crate::state_machine::InterruptBehavior {
+        let bindings = match Self::get_bindings(vk_code, config, active_layers) {
+            Some(b) => b,
+            None => return crate::state_machine::InterruptBehavior::ForceTap,
+        };
+
+        let hold_binding = match bindings.iter().find(|b| b.trigger == "hold") {
+            Some(b) => b,
+            None => return crate::state_machine::InterruptBehavior::ForceTap,
+        };
+
+        let has_tap = bindings.iter().any(|b| b.trigger == "tap");
+        match (hold_binding.interrupt_behavior.as_deref(), has_tap) {
+            (Some("ignore"), _) => crate::state_machine::InterruptBehavior::Ignore,
+            (Some("forceHold"), _) | (None, false) => crate::state_machine::InterruptBehavior::ForceHold,
+            _ => crate::state_machine::InterruptBehavior::ForceTap,
+        }
     }
 
     pub fn process_key(vk_code: u16, is_down: bool, config: &Config) -> HookAction {
@@ -322,6 +311,64 @@ impl KeyProcessor {
         }
     }
 
+    fn update_next_timeout(next_timeout: &mut Option<Instant>, target: Instant) {
+        *next_timeout = Some(next_timeout.map_or(target, |curr| curr.min(target)));
+    }
+
+    fn check_key_timer(
+        key_state: &KeyState,
+        vk: u16,
+        config: &Config,
+        active_layers: &[String],
+        now: Instant,
+    ) -> Option<TimerAction> {
+        let (target_time, event) = match key_state {
+            KeyState::WaitingForHold { pressed_at } => {
+                let timing = Self::get_timing(vk, "hold", config, active_layers).unwrap_or(200);
+                (*pressed_at + std::time::Duration::from_millis(timing as u64), TriggerEvent::Timeout)
+            }
+            KeyState::WaitingForDoubleTap { first_released_at } => {
+                let timing = Self::get_timing(vk, "doubleTap", config, active_layers).unwrap_or(200);
+                (*first_released_at + std::time::Duration::from_millis(timing as u64), TriggerEvent::Timeout)
+            }
+            KeyState::HoldActive { last_repeated_at, .. } | KeyState::PassthroughHoldActive { last_repeated_at, .. } => {
+                let interval = Self::get_repeat_interval(vk, "hold", config, active_layers)?;
+                (*last_repeated_at + std::time::Duration::from_millis(interval as u64), TriggerEvent::CustomRepeat)
+            }
+            KeyState::TapActive { last_repeated_at, .. } => {
+                let interval = Self::get_repeat_interval(vk, "tap", config, active_layers)?;
+                (*last_repeated_at + std::time::Duration::from_millis(interval as u64), TriggerEvent::CustomRepeat)
+            }
+            _ => return None,
+        };
+
+        if now >= target_time {
+            Some(TimerAction::Trigger(event))
+        } else {
+            Some(TimerAction::Pending(target_time))
+        }
+    }
+
+    fn check_reconcile_status(state: &crate::key_processor::state::ProcessorState, now: Instant) -> ReconcileAction {
+        const IDLE_RECONCILE_THRESHOLD: std::time::Duration = std::time::Duration::from_millis(1500);
+
+        if state.pressed_vks.is_empty() && state.momentary_layers.is_empty() {
+            return ReconcileAction::None;
+        }
+
+        match crate::key_processor::state::get_last_key_activity() {
+            Some(last_act) => {
+                let idle_target = last_act + IDLE_RECONCILE_THRESHOLD;
+                if now >= idle_target {
+                    ReconcileAction::Execute
+                } else {
+                    ReconcileAction::WaitUntil(idle_target)
+                }
+            }
+            None => ReconcileAction::Execute,
+        }
+    }
+
     pub fn start_timeout_worker(app: tauri::AppHandle) {
         use tauri::Manager;
         std::thread::spawn(move || {
@@ -345,38 +392,10 @@ impl KeyProcessor {
                 let mut next_timeout: Option<Instant> = None;
 
                 for (&vk, key_state) in state_guard.key_states.iter_mut() {
-                    let mut target_time_opt = None;
-                    let mut is_custom_repeat = false;
-
-                    match key_state {
-                        KeyState::WaitingForHold { pressed_at } => {
-                            let timing = Self::get_timing(vk, "hold", &config, &active_layers).unwrap_or(200);
-                            target_time_opt = Some(*pressed_at + std::time::Duration::from_millis(timing as u64));
-                        }
-                        KeyState::WaitingForDoubleTap { first_released_at } => {
-                            let timing = Self::get_timing(vk, "doubleTap", &config, &active_layers).unwrap_or(200);
-                            target_time_opt = Some(*first_released_at + std::time::Duration::from_millis(timing as u64));
-                        }
-                        KeyState::HoldActive { last_repeated_at, .. } | KeyState::PassthroughHoldActive { last_repeated_at, .. } => {
-                            if let Some(interval) = Self::get_repeat_interval(vk, "hold", &config, &active_layers) {
-                                target_time_opt = Some(*last_repeated_at + std::time::Duration::from_millis(interval as u64));
-                                is_custom_repeat = true;
-                            }
-                        }
-                        KeyState::TapActive { last_repeated_at, .. } => {
-                            if let Some(interval) = Self::get_repeat_interval(vk, "tap", &config, &active_layers) {
-                                target_time_opt = Some(*last_repeated_at + std::time::Duration::from_millis(interval as u64));
-                                is_custom_repeat = true;
-                            }
-                        }
-                        _ => {}
-                    }
-
-                    if let Some(target_time) = target_time_opt {
-                        if now >= target_time {
+                    match Self::check_key_timer(key_state, vk, &config, &active_layers, now) {
+                        Some(TimerAction::Trigger(event)) => {
                             let cap = Self::determine_capability(vk, &config, &active_layers)
                                 .unwrap_or(KeyCapability::TapOnly);
-                            let event = if is_custom_repeat { TriggerEvent::CustomRepeat } else { TriggerEvent::Timeout };
                             let interrupt_behavior = Self::get_interrupt_behavior(vk, &config, &active_layers);
                             let (new_state, cmd) = transition(
                                 *key_state,
@@ -390,32 +409,22 @@ impl KeyProcessor {
                             }
                             *key_state = new_state;
                             cmds.push((vk, cmd));
-                        } else {
-                            if next_timeout.map_or(true, |t| target_time < t) {
-                                next_timeout = Some(target_time);
-                            }
                         }
+                        Some(TimerAction::Pending(target_time)) => {
+                            Self::update_next_timeout(&mut next_timeout, target_time);
+                        }
+                        None => {}
                     }
                 }
                 state_guard.key_states.retain(|_, s| *s != KeyState::Idle);
 
-                const IDLE_RECONCILE_THRESHOLD: std::time::Duration = std::time::Duration::from_millis(1500);
-                let should_reconcile = if !state_guard.pressed_vks.is_empty() || !state_guard.momentary_layers.is_empty() {
-                    if let Some(last_act) = crate::key_processor::state::get_last_key_activity() {
-                        let idle_target = last_act + IDLE_RECONCILE_THRESHOLD;
-                        if now >= idle_target {
-                            true
-                        } else {
-                            if next_timeout.map_or(true, |t| idle_target < t) {
-                                next_timeout = Some(idle_target);
-                            }
-                            false
-                        }
-                    } else {
-                        true
+                let should_reconcile = match Self::check_reconcile_status(&state_guard, now) {
+                    ReconcileAction::Execute => true,
+                    ReconcileAction::WaitUntil(target) => {
+                        Self::update_next_timeout(&mut next_timeout, target);
+                        false
                     }
-                } else {
-                    false
+                    ReconcileAction::None => false,
                 };
 
                 drop(state_guard);
@@ -450,9 +459,6 @@ impl KeyProcessor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex as StdMutex;
-
-    static TEST_MUTEX: StdMutex<()> = StdMutex::new(());
 
     fn create_test_config() -> Config {
         let mut config = crate::get_default_config();
@@ -520,7 +526,7 @@ mod tests {
 
     #[test]
     fn test_process_key_fastpath_passthrough_momentary() {
-        let _lock = TEST_MUTEX.lock().unwrap();
+        let _lock = state::TEST_LOCK.lock().unwrap();
         let mut config = create_test_config();
         {
             let base_layer = config.layers.iter_mut().find(|l| l.id == "base").unwrap();
@@ -562,7 +568,7 @@ mod tests {
 
     #[test]
     fn test_process_key_non_passthrough_momentary_muhenkan() {
-        let _lock = TEST_MUTEX.lock().unwrap();
+        let _lock = state::TEST_LOCK.lock().unwrap();
         let mut config = create_test_config();
         config.layers.push(crate::Layer {
             id: "num".to_string(),

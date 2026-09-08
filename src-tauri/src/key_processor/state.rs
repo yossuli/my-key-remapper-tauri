@@ -63,3 +63,6 @@ pub fn get_last_key_activity() -> Option<std::time::Instant> {
     LAST_KEY_ACTIVITY.lock().ok().and_then(|g| *g)
 }
 
+#[cfg(test)]
+pub static TEST_LOCK: Mutex<()> = Mutex::new(());
+

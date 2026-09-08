@@ -88,21 +88,17 @@ pub fn teardown_hook() {
 unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if code >= 0 && lparam.0 != 0 {
         let ms_struct = *(lparam.0 as *const MSLLHOOKSTRUCT);
-        let msg = wparam.0 as u32;
-
+        let is_injected = (ms_struct.flags & 0x01) != 0;
         const WM_MOUSEMOVE: u32 = 0x0200;
 
-        let is_injected = (ms_struct.flags & 0x01) != 0;
+        let remap_enabled = REMAP_ENABLED.load(Ordering::Relaxed);
+        let scroll_active = SCROLL_MODE_ACTIVE.load(Ordering::Relaxed);
 
-        if !is_injected {
-            // スクロールモード中のカーソル移動ブロック（Raw Input で変位スクロール処理）
-            let remap_enabled = REMAP_ENABLED.load(Ordering::Relaxed);
-            let scroll_active = SCROLL_MODE_ACTIVE.load(Ordering::Relaxed);
-
-            if remap_enabled && scroll_active && msg == WM_MOUSEMOVE {
-                // LRESULT(1) でカーソル移動をキャンセル（その場に固定）
+        match (wparam.0 as u32, is_injected, remap_enabled, scroll_active) {
+            (WM_MOUSEMOVE, false, true, true) => {
                 return windows::Win32::Foundation::LRESULT(1);
             }
+            _ => {}
         }
     }
 
@@ -110,58 +106,70 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) 
     CallNextHookEx(HHOOK(handle as *mut _), code, wparam, lparam)
 }
 
-unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    if code >= 0 {
-        let kb_struct = *(lparam.0 as *const KBDLLHOOKSTRUCT);
-        let vk_code = kb_struct.vkCode;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RawKeyEvent {
+    Down,
+    Up,
+    Other,
+}
 
-        // Window messages for keyboard
+impl RawKeyEvent {
+    fn from_wparam(wparam: u32) -> Self {
         const WM_KEYDOWN: u32 = 0x0100;
         const WM_KEYUP: u32 = 0x0101;
         const WM_SYSKEYDOWN: u32 = 0x0104;
         const WM_SYSKEYUP: u32 = 0x0105;
 
-        let is_down = wparam.0 as u32 == WM_KEYDOWN || wparam.0 as u32 == WM_SYSKEYDOWN;
-        let is_up = wparam.0 as u32 == WM_KEYUP || wparam.0 as u32 == WM_SYSKEYUP;
+        match wparam {
+            WM_KEYDOWN | WM_SYSKEYDOWN => RawKeyEvent::Down,
+            WM_KEYUP | WM_SYSKEYUP => RawKeyEvent::Up,
+            _ => RawKeyEvent::Other,
+        }
+    }
+}
 
+unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if code >= 0 {
+        let kb_struct = *(lparam.0 as *const KBDLLHOOKSTRUCT);
         let flags = kb_struct.flags.0;
-        let is_injected = (flags & 0x10) != 0; // LLKHF_INJECTED
+        let is_injected = (flags & 0x10) != 0;
         let is_self_injected = is_injected && kb_struct.dwExtraInfo == crate::key_processor::utils::INJECTED_SIGNATURE;
 
-        if (is_down || is_up) && !is_self_injected {
-            crate::key_processor::state::touch_key_activity();
+        let key_event = RawKeyEvent::from_wparam(wparam.0 as u32);
+        match (key_event, is_self_injected) {
+            (RawKeyEvent::Down, false) | (RawKeyEvent::Up, false) => {
+                let is_down = key_event == RawKeyEvent::Down;
+                let vk_code = kb_struct.vkCode;
 
-            if is_down {
-                get_pressed_keys_set().lock().unwrap().insert(vk_code);
-            } else if is_up {
-                get_pressed_keys_set().lock().unwrap().remove(&vk_code);
-            }
+                crate::key_processor::state::touch_key_activity();
 
-            if let Some(app) = APP_HANDLE.get() {
-                // FEへの通知 (非同期で実行してメインスレッドのメッセージループをブロックしないようにする)
-                let app_clone = app.clone();
-                tauri::async_runtime::spawn(async move {
-                    let _ = app_clone.emit("key-event", serde_json::json!({
-                        "vkCode": vk_code,
-                        "isUp": is_up
-                    }));
-                });
-
-                let remap_enabled = REMAP_ENABLED.load(Ordering::SeqCst);
-                if !remap_enabled {
-                    let handle = HOOK_HANDLE.load(Ordering::SeqCst);
-                    return CallNextHookEx(HHOOK(handle as *mut _), code, wparam, lparam);
+                if is_down {
+                    get_pressed_keys_set().lock().unwrap().insert(vk_code);
+                } else {
+                    get_pressed_keys_set().lock().unwrap().remove(&vk_code);
                 }
 
-                // リマップ判定
-                let state = app.state::<ConfigState>();
-                let config = state.config.load();
+                if let Some(app) = APP_HANDLE.get() {
+                    let app_clone = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let _ = app_clone.emit("key-event", serde_json::json!({
+                            "vkCode": vk_code,
+                            "isUp": !is_down
+                        }));
+                    });
 
-                match KeyProcessor::process_key(vk_code as u16, is_down, &config) {
-                    HookAction::Block => return windows::Win32::Foundation::LRESULT(1),
-                    HookAction::PassThrough => {}
+                    if REMAP_ENABLED.load(Ordering::SeqCst) {
+                        let state = app.state::<ConfigState>();
+                        let config = state.config.load();
+
+                        match KeyProcessor::process_key(vk_code as u16, is_down, &config) {
+                            HookAction::Block => return windows::Win32::Foundation::LRESULT(1),
+                            HookAction::PassThrough => {}
+                        }
+                    }
                 }
             }
+            _ => {}
         }
     }
 

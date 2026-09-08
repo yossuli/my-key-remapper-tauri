@@ -60,3 +60,12 @@ pub fn apply_action(
         }
     }
 }
+
+pub fn apply_repeat(physical_vk: u16, action: &serde_json::Value) {
+    let action_type = action.get("type").and_then(|v| v.as_str()).unwrap_or("none");
+    match action_type {
+        "remap" => remap::repeat(physical_vk, action),
+        _ => {}
+    }
+}
+
