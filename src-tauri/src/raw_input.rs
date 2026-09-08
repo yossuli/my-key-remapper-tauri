@@ -40,17 +40,25 @@ unsafe extern "system" fn raw_input_wnd_proc(
             );
 
             if raw_size > 0 {
-                let mut buffer = vec![0u8; raw_size as usize];
+                let mut stack_buf = [0u8; 256];
+                let mut heap_buf;
+                let buf_ptr = if (raw_size as usize) <= stack_buf.len() {
+                    stack_buf.as_mut_ptr()
+                } else {
+                    heap_buf = vec![0u8; raw_size as usize];
+                    heap_buf.as_mut_ptr()
+                };
+
                 let bytes_read = GetRawInputData(
                     HRAWINPUT(lparam.0 as *mut _),
                     RID_INPUT,
-                    Some(buffer.as_mut_ptr() as *mut _),
+                    Some(buf_ptr as *mut _),
                     &mut raw_size,
                     header_size,
                 );
 
                 if bytes_read != u32::MAX {
-                    let raw = &*(buffer.as_ptr() as *const RAWINPUT);
+                    let raw = &*(buf_ptr as *const RAWINPUT);
                     // マウス入力かつ相対移動の場合
                     if raw.header.dwType == 0 {
                         // RIM_TYPEMOUSE = 0

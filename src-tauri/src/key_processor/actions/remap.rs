@@ -1,3 +1,4 @@
+use smallvec::SmallVec;
 use crate::Config;
 use crate::key_processor::state::get_state;
 use crate::key_processor::utils::{
@@ -37,7 +38,11 @@ pub fn apply(
         _ => return,
     };
 
-    let target_vks: Vec<u16> = keys.iter().filter_map(|k| k.as_u64().map(|v| v as u16)).collect();
+    let target_vks: SmallVec<[u16; 16]> = keys
+        .iter()
+        .filter_map(|k| k.as_u64().map(|v| v as u16))
+        .collect();
+
     if target_vks.is_empty() {
         return;
     }

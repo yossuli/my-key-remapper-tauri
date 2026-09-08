@@ -8,7 +8,7 @@ pub fn apply(physical_vk: u16, action: &serde_json::Value, config: &Config) {
             let mut state = get_state().lock().unwrap();
             let old_layers = state.active_layers.clone();
             state.momentary_layers.insert(physical_vk, layer_id.to_string());
-            if !state.active_layers.contains(&layer_id.to_string()) {
+            if !state.active_layers.iter().any(|l| l == layer_id) {
                 state.active_layers.push(layer_id.to_string());
             }
             (old_layers, state.active_layers.clone())

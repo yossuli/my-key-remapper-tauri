@@ -1,3 +1,4 @@
+use smallvec::SmallVec;
 use crate::Config;
 use std::collections::HashSet;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -278,8 +279,11 @@ fn is_modifier_subsumed(vk: u16, target_vks: &[u16]) -> bool {
         || (is_win(vk) && target_vks.iter().any(|&k| is_win(k)))
 }
 
-pub fn compute_active_modifiers(active_layers: &[String], config: &Config) -> HashSet<u16> {
-    let mut mods = HashSet::new();
+pub fn compute_active_modifiers_into<I, S>(layers: I, config: &Config, out: &mut Vec<u16>)
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
     let mod_mappings = [
         ("shift", VK_LSHIFT),
         ("ctrl", VK_LCONTROL),
@@ -287,17 +291,25 @@ pub fn compute_active_modifiers(active_layers: &[String], config: &Config) -> Ha
         ("win", VK_LWIN),
     ];
 
-    for layer_id in active_layers {
-        let Some(layer) = config.layers.iter().find(|l| &l.id == layer_id) else { continue };
+    for layer_id in layers {
+        let layer_id_str = layer_id.as_ref();
+        let Some(layer) = config.layers.iter().find(|l| l.id == layer_id_str) else { continue };
         let Some(def_mods) = &layer.default_modifiers else { continue };
 
         for (name, vk) in mod_mappings {
             if def_mods.get(name).and_then(|v| v.as_bool()).unwrap_or(false) {
-                mods.insert(vk);
+                if !out.contains(&vk) {
+                    out.push(vk);
+                }
             }
         }
     }
-    mods
+}
+
+pub fn compute_active_modifiers(active_layers: &[String], config: &Config) -> HashSet<u16> {
+    let mut out = Vec::with_capacity(4);
+    compute_active_modifiers_into(active_layers, config, &mut out);
+    out.into_iter().collect()
 }
 
 pub fn apply_layer_modifiers(old_layers: &[String], new_layers: &[String], config: &Config) {
@@ -333,22 +345,39 @@ pub fn suppress_active_modifiers_for_remap(
     config: &Config,
     source_layer: Option<&str>,
 ) -> Vec<u16> {
-    let (active_layers, passthrough_keys, momentary_layers) = {
+    let (target_active_layers, relevant_pt_keys) = {
         let state = get_state().lock().unwrap();
-        (
-            state.active_layers.clone(),
-            state.get_passthrough_trigger_keys(),
-            state.momentary_layers.clone(),
-        )
+
+        let mut pt_keys: SmallVec<[u16; 8]> = SmallVec::new();
+
+        for (&pt_vk, s) in &state.key_states {
+            if matches!(s, crate::state_machine::KeyState::PassthroughHoldActive { .. }) && pt_vk != physical_vk {
+                let belongs = match source_layer {
+                    Some(src_layer) => state.momentary_layers.get(&pt_vk).map(|l| l.as_str()) == Some(src_layer),
+                    None => true,
+                };
+                if belongs {
+                    pt_keys.push(pt_vk);
+                }
+            }
+        }
+
+        let layers = match source_layer {
+            Some(_) => Vec::new(),
+            None => state.active_layers.clone(),
+        };
+
+        (layers, pt_keys)
     };
 
-    let target_layers: Vec<String> = match source_layer {
-        Some(src_layer) => vec![src_layer.to_string()],
-        None => active_layers,
-    };
+    let mut active_mods = Vec::with_capacity(4);
+    if let Some(src_layer) = source_layer {
+        compute_active_modifiers_into([src_layer], config, &mut active_mods);
+    } else {
+        compute_active_modifiers_into(&target_active_layers, config, &mut active_mods);
+    }
 
-    let active_mods = compute_active_modifiers(&target_layers, config);
-    let mut to_suppress = Vec::new();
+    let mut to_suppress = Vec::with_capacity(active_mods.len() + relevant_pt_keys.len());
 
     for &m in &active_mods {
         if !is_modifier_subsumed(m, target_vks) && !to_suppress.contains(&m) {
@@ -356,16 +385,9 @@ pub fn suppress_active_modifiers_for_remap(
         }
     }
 
-    for &pt_vk in &passthrough_keys {
-        if pt_vk != physical_vk {
-            let belongs_to_target = match source_layer {
-                Some(src_layer) => momentary_layers.get(&pt_vk).map(|l| l.as_str()) == Some(src_layer),
-                None => true,
-            };
-
-            if belongs_to_target && !is_modifier_subsumed(pt_vk, target_vks) && !to_suppress.contains(&pt_vk) {
-                to_suppress.push(pt_vk);
-            }
+    for &pt_vk in &relevant_pt_keys {
+        if !is_modifier_subsumed(pt_vk, target_vks) && !to_suppress.contains(&pt_vk) {
+            to_suppress.push(pt_vk);
         }
     }
 

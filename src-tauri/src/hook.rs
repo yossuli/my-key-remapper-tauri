@@ -40,10 +40,6 @@ pub fn set_scroll_mode_state(active: bool, sensitivity: f64, invert: bool, axis:
     }
 }
 
-fn get_pressed_keys_set() -> &'static Mutex<std::collections::HashSet<u32>> {
-    static SET: OnceLock<Mutex<std::collections::HashSet<u32>>> = OnceLock::new();
-    SET.get_or_init(|| Mutex::new(std::collections::HashSet::new()))
-}
 
 pub fn setup_hook(app: AppHandle) {
     let _ = APP_HANDLE.set(app.clone());
@@ -143,19 +139,21 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
 
                 crate::key_processor::state::touch_key_activity();
 
-                if is_down {
-                    get_pressed_keys_set().lock().unwrap().insert(vk_code);
-                } else {
-                    get_pressed_keys_set().lock().unwrap().remove(&vk_code);
+                #[derive(serde::Serialize, Clone, Copy)]
+                #[serde(rename_all = "camelCase")]
+                struct KeyEventPayload {
+                    vk_code: u32,
+                    is_up: bool,
                 }
 
                 if let Some(app) = APP_HANDLE.get() {
                     let app_clone = app.clone();
+                    let payload = KeyEventPayload {
+                        vk_code,
+                        is_up: !is_down,
+                    };
                     tauri::async_runtime::spawn(async move {
-                        let _ = app_clone.emit("key-event", serde_json::json!({
-                            "vkCode": vk_code,
-                            "isUp": !is_down
-                        }));
+                        let _ = app_clone.emit("key-event", payload);
                     });
 
                     if REMAP_ENABLED.load(Ordering::SeqCst) {

@@ -2,6 +2,7 @@ pub mod state;
 pub mod utils;
 pub mod actions;
 
+use smallvec::SmallVec;
 use crate::Config;
 use crate::state_machine::{transition, ActionCommand, KeyCapability, KeyState, TriggerEvent};
 use std::time::Instant;
@@ -31,6 +32,22 @@ pub enum ReconcileAction {
     None,
 }
 
+#[inline]
+fn format_vk(vk: u16, buf: &mut [u8; 5]) -> &str {
+    let mut n = vk;
+    if n == 0 {
+        buf[4] = b'0';
+        return std::str::from_utf8(&buf[4..5]).unwrap();
+    }
+    let mut idx = 5;
+    while n > 0 {
+        idx -= 1;
+        buf[idx] = b'0' + (n % 10) as u8;
+        n /= 10;
+    }
+    std::str::from_utf8(&buf[idx..5]).unwrap()
+}
+
 pub struct KeyProcessor;
 
 impl KeyProcessor {
@@ -39,10 +56,12 @@ impl KeyProcessor {
         config: &'a Config,
         active_layers: &[String],
     ) -> Option<(&'a str, &'a Vec<crate::Binding>)> {
+        let mut vk_buf = [0u8; 5];
+        let vk_str = format_vk(vk, &mut vk_buf);
         for layer_id in config.layer_order.iter().rev() {
             if active_layers.contains(layer_id) || layer_id == "base" {
                 if let Some(layer) = config.layers.iter().find(|l| &l.id == layer_id) {
-                    if let Some(bindings) = layer.bindings.get(&vk.to_string()) {
+                    if let Some(bindings) = layer.bindings.get(vk_str) {
                         if !bindings.is_empty() {
                             return Some((layer_id.as_str(), bindings));
                         }
@@ -137,19 +156,22 @@ impl KeyProcessor {
     }
 
     fn execute_action(cmd: ActionCommand, vk: u16, config: &Config) {
-        let active_layers = get_state().lock().unwrap().active_layers.clone();
+        let get_action = |trigger: &str| {
+            let state = get_state().lock().unwrap();
+            Self::get_action_with_layer(vk, trigger, config, &state.active_layers)
+        };
 
         match cmd {
             ActionCommand::None => {}
             ActionCommand::ExecuteTap => {
-                if let Some((source_layer, action)) = Self::get_action_with_layer(vk, "tap", config, &active_layers) {
+                if let Some((source_layer, action)) = get_action("tap") {
                     apply_action(vk, action, false, config, Some(source_layer));
                 } else {
                     send_key_atomic(vk);
                 }
             }
             ActionCommand::ExecuteTapAtomic => {
-                if let Some((source_layer, action)) = Self::get_action_with_layer(vk, "tap", config, &active_layers) {
+                if let Some((source_layer, action)) = get_action("tap") {
                     apply_action(vk, action, true, config, Some(source_layer));
                 } else {
                     send_key_atomic(vk);
@@ -157,23 +179,23 @@ impl KeyProcessor {
                 get_state().lock().unwrap().pressed_vks.remove(&vk);
             }
             ActionCommand::ExecuteHold => {
-                if let Some((source_layer, action)) = Self::get_action_with_layer(vk, "hold", config, &active_layers) {
+                if let Some((source_layer, action)) = get_action("hold") {
                     apply_action(vk, action, false, config, Some(source_layer));
                 }
             }
             ActionCommand::ExecutePassthroughHoldDelayed => {
                 send_key_raw(vk, false);
-                if let Some((source_layer, action)) = Self::get_action_with_layer(vk, "hold", config, &active_layers) {
+                if let Some((source_layer, action)) = get_action("hold") {
                     apply_action(vk, action, false, config, Some(source_layer));
                 }
             }
             ActionCommand::ExecuteHoldRepeat => {
-                if let Some((_, action)) = Self::get_action_with_layer(vk, "hold", config, &active_layers) {
+                if let Some((_, action)) = get_action("hold") {
                     actions::apply_repeat(vk, action);
                 }
             }
             ActionCommand::ExecuteDoubleTap => {
-                if let Some((source_layer, action)) = Self::get_action_with_layer(vk, "doubleTap", config, &active_layers) {
+                if let Some((source_layer, action)) = get_action("doubleTap") {
                     apply_action(vk, action, false, config, Some(source_layer));
                 }
             }
@@ -228,17 +250,23 @@ impl KeyProcessor {
         let mut state_guard = get_state().lock().unwrap();
 
         if is_down {
-            let mut other_cmds = Vec::new();
-            let active_layers = state_guard.active_layers.clone();
-            for (&other_vk, other_state) in state_guard.key_states.iter_mut() {
+            let mut other_cmds: SmallVec<[(u16, ActionCommand); 16]> = SmallVec::new();
+
+            let crate::key_processor::state::ProcessorState {
+                ref mut key_states,
+                ref active_layers,
+                ..
+            } = *state_guard;
+
+            for (&other_vk, other_state) in key_states.iter_mut() {
                 if other_vk != vk_code {
-                    let cap = Self::determine_capability(other_vk, config, &active_layers)
+                    let cap = Self::determine_capability(other_vk, config, active_layers)
                         .unwrap_or(KeyCapability::TapOnly);
                     let (new_state, cmd) = transition(
                         *other_state,
                         TriggerEvent::OtherKeyPressed,
                         cap,
-                        Self::get_interrupt_behavior(other_vk, config, &active_layers),
+                        Self::get_interrupt_behavior(other_vk, config, active_layers),
                         Instant::now(),
                     );
                     *other_state = new_state;
@@ -387,16 +415,21 @@ impl KeyProcessor {
                 let state = app.state::<crate::ConfigState>();
                 let config = state.config.load();
                 let now = Instant::now();
-                let mut cmds = Vec::new();
-                let active_layers = state_guard.active_layers.clone();
+                let mut cmds: SmallVec<[(u16, ActionCommand); 16]> = SmallVec::new();
                 let mut next_timeout: Option<Instant> = None;
 
-                for (&vk, key_state) in state_guard.key_states.iter_mut() {
-                    match Self::check_key_timer(key_state, vk, &config, &active_layers, now) {
+                let crate::key_processor::state::ProcessorState {
+                    ref mut key_states,
+                    ref active_layers,
+                    ..
+                } = *state_guard;
+
+                for (&vk, key_state) in key_states.iter_mut() {
+                    match Self::check_key_timer(key_state, vk, &config, active_layers, now) {
                         Some(TimerAction::Trigger(event)) => {
-                            let cap = Self::determine_capability(vk, &config, &active_layers)
+                            let cap = Self::determine_capability(vk, &config, active_layers)
                                 .unwrap_or(KeyCapability::TapOnly);
-                            let interrupt_behavior = Self::get_interrupt_behavior(vk, &config, &active_layers);
+                            let interrupt_behavior = Self::get_interrupt_behavior(vk, &config, active_layers);
                             let (new_state, cmd) = transition(
                                 *key_state,
                                 event,

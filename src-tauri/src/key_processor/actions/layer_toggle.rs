@@ -7,7 +7,7 @@ pub fn apply(action: &serde_json::Value, config: &Config) {
         let (old_layers, new_layers) = {
             let mut state = get_state().lock().unwrap();
             let old_layers = state.active_layers.clone();
-            if state.active_layers.contains(&layer_id.to_string()) {
+            if state.active_layers.iter().any(|l| l == layer_id) {
                 state.active_layers.retain(|l| l != layer_id);
             } else {
                 state.active_layers.push(layer_id.to_string());

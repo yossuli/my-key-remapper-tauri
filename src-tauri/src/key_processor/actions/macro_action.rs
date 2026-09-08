@@ -1,3 +1,4 @@
+use smallvec::SmallVec;
 use crate::Config;
 use std::thread;
 use std::time::Duration;
@@ -18,12 +19,10 @@ fn execute_macro_sync(macro_id: &str, config: &Config, depth: u32) {
                     match action_type {
                         "remap" => {
                             if let Some(keys) = step.get("keys").and_then(|v| v.as_array()) {
-                                let mut vks = Vec::new();
-                                for k in keys {
-                                    if let Some(vk) = k.as_u64() {
-                                        vks.push(vk as u16);
-                                    }
-                                }
+                                let vks: SmallVec<[u16; 16]> = keys
+                                    .iter()
+                                    .filter_map(|k| k.as_u64().map(|v| v as u16))
+                                    .collect();
                                 log::info!("    remap keys: {:?}", vks);
                                 for &vk in &vks {
                                     crate::key_processor::utils::send_key_raw(vk, false);

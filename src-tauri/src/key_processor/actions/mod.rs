@@ -48,10 +48,10 @@ pub fn apply_action(
         "scrollMode" | "trackpadScroll" => {
             let sensitivity = action.get("sensitivity").and_then(|v| v.as_f64()).unwrap_or(1.0);
             let invert = action.get("invert").and_then(|v| v.as_bool()).unwrap_or(false);
-            let axis = action.get("axis").and_then(|v| v.as_str()).unwrap_or("both").to_string();
+            let axis = action.get("axis").and_then(|v| v.as_str()).unwrap_or("both");
 
             #[cfg(windows)]
-            crate::hook::set_scroll_mode_state(true, sensitivity, invert, &axis);
+            crate::hook::set_scroll_mode_state(true, sensitivity, invert, axis);
 
             log::info!("scrollMode activated: sens={}, invert={}, axis={}", sensitivity, invert, axis);
         }
