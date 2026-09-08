@@ -56,10 +56,22 @@ export function KeyRemapList({
     [isCaptureEnabled, requireExplicitAdd, onCaptureActiveChange]
   );
 
-  const { inputKey, removeKey, onKeyDown, onKeyUp, reset } = useKeyCapture({
+  const { inputKey, onKeyDown, onKeyUp, reset } = useKeyCapture({
     currentKeys: safeKeys,
     onKeysChange,
   });
+
+  const handleRemoveKeys = useCallback(
+    (vks: number | number[]) => {
+      const vksToRemove = Array.isArray(vks) ? vks : [vks];
+      const removeSet = new Set(vksToRemove);
+      const next = safeKeys.filter((k) => !removeSet.has(k));
+      if (next.length !== safeKeys.length) {
+        onKeysChange(next);
+      }
+    },
+    [safeKeys, onKeysChange]
+  );
 
   useKeyEventInput({
     enabled: isCaptureActive && !isInputFocused,
@@ -84,7 +96,7 @@ export function KeyRemapList({
           isRemoveDisabled={isRemoveDisabled}
           keys={safeKeys}
           layout={layout}
-          onRemoveKey={removeKey}
+          onRemoveKey={handleRemoveKeys}
           showVkInput={showVkInput}
         />
 

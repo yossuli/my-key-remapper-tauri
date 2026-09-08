@@ -2,7 +2,6 @@ import { ArrowRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/atoms/Button";
 import { Icon } from "@/components/atoms/Icon";
-import { Mapped } from "@/components/control/Mapped";
 import { Show } from "@/components/control/Show";
 import { KeyDisplay } from "@/components/molecules/display/KeyDisplay";
 import { TriggerTabs } from "@/components/molecules/forms/TriggerTabs";
@@ -233,16 +232,11 @@ export function UnifiedActionEditor({
           <KeyDisplay layout={layout} vkCode={targetVk || 0} />
           <Show condition={!!targetKeys && targetKeys.length > 0}>
             <Icon icon={ArrowRight} size="md" />
-            <Mapped value={(targetKeys || []).map((vk) => ({ id: vk }))}>
-              {({ id: vk }) => (
-                <KeyDisplay
-                  key={vk}
-                  layout={layout}
-                  variant="primary"
-                  vkCode={vk}
-                />
-              )}
-            </Mapped>
+            <KeyDisplay
+              layout={layout}
+              variant="primary"
+              vkCode={targetKeys || []}
+            />
           </Show>
         </div>
       </Show>

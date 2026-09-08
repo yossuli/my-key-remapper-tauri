@@ -2,9 +2,12 @@ import { motion } from "framer-motion";
 import { WithRemoveBadge } from "@/components/atoms/RemoveBadge";
 import { KEY_SIZE_REM } from "@/constants/index";
 import type { KeyDefinition, LayoutType } from "@/types";
-import type { Action, KeyBinding, TriggerType } from "@/types/remapConfig";
+import type { KeyBinding, TriggerType } from "@/types/remapConfig";
+import {
+  type ActionStyleVariant,
+  getActionDisplayInfo,
+} from "@/utils/actionDisplay";
 import { cn } from "@/utils/cn";
-import { getKeyLabel } from "@/utils/getKeyLabel";
 
 interface KeyButtonProps {
   keyDef: KeyDefinition;
@@ -12,35 +15,80 @@ interface KeyButtonProps {
   layout: LayoutType;
   layerId: string;
   selectedTrigger: TriggerType;
-  isQuickEditing?: boolean; // クイック設定モードで入力待ち状態のキー
+  macroNameMap?: Record<string, string>;
+  isQuickEditing?: boolean;
   onClick: (vk: number) => void;
   onRemove: () => void;
 }
 
-/**
- * アクションに基づいて表示ラベルを取得する
- */
-function getDisplayLabel(
-  action: Action | undefined,
-  defaultLabel: string,
-  layout: LayoutType
-): string {
-  if (!action) {
-    return defaultLabel;
+const VARIANT_CLASSES: Record<ActionStyleVariant, string> = {
+  default: "border-border bg-background text-foreground hover:bg-muted",
+  remap:
+    "border-primary bg-primary text-primary-foreground hover:bg-primary/90",
+  numpad:
+    "border-teal-500 bg-teal-600 text-white hover:bg-teal-500 shadow-teal-900/20",
+  macro:
+    "border-purple-500 bg-purple-600 text-white hover:bg-purple-500 shadow-purple-900/20",
+  mouse:
+    "border-amber-500 bg-amber-600 text-white hover:bg-amber-500 shadow-amber-900/20",
+  layer:
+    "border-indigo-500 bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-900/20",
+  delay:
+    "border-slate-500 bg-slate-600 text-white hover:bg-slate-500 shadow-slate-900/20",
+  disabled:
+    "border-rose-800 bg-rose-950/80 text-rose-300 hover:bg-rose-900/80 line-through opacity-80",
+};
+
+const MAX_LENGTH_FOR_LARGE = 3;
+const MAX_LENGTH_FOR_MEDIUM = 5;
+
+const getLabelFontSize = (labelLength: number): string => {
+  if (labelLength > MAX_LENGTH_FOR_MEDIUM) {
+    return "text-[11px]";
   }
-  if ("keys" in action) {
-    return getKeyLabel(action.keys, layout);
+  if (labelLength > MAX_LENGTH_FOR_LARGE) {
+    return "text-xs";
   }
-  if (action.type === "layerToggle") {
-    return `[${action.layerId}]`;
-  }
-  if (action.type === "layerMomentary") {
-    return `(${action.layerId})`;
-  }
-  if (action.type === "none") {
-    return "×";
-  }
-  return defaultLabel;
+  return "text-sm";
+};
+
+interface ActiveKeyContentProps {
+  label: string;
+  badge?: string;
+  defaultKeyLabel: string;
+}
+
+function ActiveKeyContent({
+  label,
+  badge,
+  defaultKeyLabel,
+}: ActiveKeyContentProps) {
+  const fontSizeClass = getLabelFontSize(label.length);
+
+  return (
+    <div className="relative flex h-full w-full flex-col items-center justify-center p-0.5 pointer-events-none">
+      <div className="absolute top-0.5 right-1 left-1 flex items-center justify-between">
+        <span className="max-w-[48%] truncate font-mono text-[8.5px] leading-none opacity-70">
+          {defaultKeyLabel}
+        </span>
+        {badge ? (
+          <span className="rounded bg-black/35 px-1 py-0.2 font-bold text-[7.5px] text-white/95 uppercase leading-none tracking-tight">
+            {badge}
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-2 flex w-full items-center justify-center px-0.5">
+        <span
+          className={cn(
+            "truncate text-center font-bold leading-tight",
+            fontSizeClass
+          )}
+        >
+          {label}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 export function KeyButton({
@@ -49,38 +97,44 @@ export function KeyButton({
   layout,
   layerId,
   selectedTrigger,
+  macroNameMap,
   isQuickEditing = false,
   onClick,
   onRemove,
 }: KeyButtonProps) {
   const baseVk = Array.isArray(keyDef.vk) ? keyDef.vk[0] : keyDef.vk;
 
-  // 選択されたトリガーに対応するアクションを取得
   const triggerAction = bindings?.find(
     (b) => b.trigger === selectedTrigger
   )?.action;
   const hasBindingForTrigger = triggerAction !== undefined;
 
-  // 表示ラベルを決定
-  const displayLabel = getDisplayLabel(triggerAction, keyDef.label, layout);
+  const displayInfo = getActionDisplayInfo(
+    triggerAction,
+    keyDef.label,
+    layout,
+    macroNameMap
+  );
 
-  // カスタムレイヤーでバインディングがないキーは薄く表示
   const isInactive = !(
     (["base", "shift"] as string[]).includes(layerId) || hasBindingForTrigger
   );
-  const isActive =
-    (["base", "shift"] as string[]).includes(layerId) && hasBindingForTrigger;
+
+  const activeStyleClass = hasBindingForTrigger
+    ? VARIANT_CLASSES[displayInfo.styleVariant]
+    : VARIANT_CLASSES.default;
 
   return (
-    <WithRemoveBadge disabled={!(isActive || !isInactive)} onRemove={onRemove}>
+    <WithRemoveBadge
+      disabled={!(hasBindingForTrigger || !isInactive)}
+      onRemove={onRemove}
+    >
       <motion.button
-        // biome-ignore lint/style/noMagicNumbers: アニメーションの値なぞマジックでよい
+        // biome-ignore lint/style/noMagicNumbers: アニメーション値
         animate={isQuickEditing ? { scale: [1, 1.05, 1] } : {}}
         className={cn(
-          "flex items-center justify-center rounded-md border font-medium text-sm shadow-sm transition-colors",
-          isActive
-            ? "border-primary bg-primary text-primary-foreground"
-            : "border-border bg-background text-foreground hover:bg-muted",
+          "relative flex select-none flex-col items-center justify-center overflow-hidden rounded-md border font-medium shadow-sm transition-colors",
+          activeStyleClass,
           isInactive ? "opacity-30" : "",
           isQuickEditing
             ? "ring-2 ring-yellow-400 ring-offset-2 ring-offset-background"
@@ -88,7 +142,6 @@ export function KeyButton({
         )}
         onClick={() => onClick(baseVk)}
         onKeyDown={(e) => {
-          // キーボード操作での長押し連打による誤発火を防止
           if (e.repeat) {
             e.preventDefault();
           }
@@ -97,6 +150,7 @@ export function KeyButton({
           width: `${(keyDef.width || 1) * KEY_SIZE_REM}rem`,
           height: "3rem",
         }}
+        title={displayInfo.tooltip}
         transition={
           isQuickEditing
             ? { duration: 0.8, repeat: Number.POSITIVE_INFINITY }
@@ -106,7 +160,15 @@ export function KeyButton({
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
       >
-        {displayLabel}
+        {hasBindingForTrigger ? (
+          <ActiveKeyContent
+            badge={displayInfo.badge}
+            defaultKeyLabel={keyDef.label}
+            label={displayInfo.label}
+          />
+        ) : (
+          <span className="font-medium text-sm">{keyDef.label}</span>
+        )}
       </motion.button>
     </WithRemoveBadge>
   );

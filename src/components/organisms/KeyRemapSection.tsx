@@ -3,6 +3,7 @@ import {
   type Dispatch,
   type SetStateAction,
   useCallback,
+  useMemo,
   useState,
 } from "react";
 import { Button } from "@/components/atoms/Button";
@@ -19,6 +20,7 @@ import type {
 import { HStack, VStack } from "@/components/template/Flex";
 import type { UseGlobalSettingsReturn } from "@/hooks/api/useGlobalSettings";
 import type { UseLayerStateReturn } from "@/hooks/api/useLayerState";
+import { useMacros } from "@/hooks/api/useMacros";
 import type { UseRemapControlReturn } from "@/hooks/api/useRemapControl";
 import type { UseKeyEventLogReturn } from "@/hooks/ui/useKeyEventLog";
 import type { UseLayerStackReturn } from "@/hooks/ui/useLayerStack";
@@ -83,6 +85,15 @@ export function KeyRemapSection({
   setEditingKey,
 }: KeyRemapSectionProps) {
   const [isQuickEditMode, setIsQuickEditMode] = useState(false);
+  const { macros } = useMacros();
+
+  const macroNameMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const m of macros) {
+      map[m.id] = m.name;
+    }
+    return map;
+  }, [macros]);
 
   // クイック設定モード
   const { editingKey: quickEditingKey, startEditing: startQuickEditing } =
@@ -144,6 +155,7 @@ export function KeyRemapSection({
           keyboardLayout={keyboardLayout}
           layerState={layerState}
           layout={layout}
+          macroNameMap={macroNameMap}
           mappingActions={mappingActions}
           onKeyClick={onKeyClick}
           quickEditingKey={quickEditingKey}

@@ -16,6 +16,7 @@ interface KeyboardGridProps {
   mappingActions: Pick<MappingActions, "removeMapping">;
   selectedTrigger: TriggerType;
   quickEditingKey?: number | null;
+  macroNameMap?: Record<string, string>;
   onKeyClick: (vk: number) => void;
 }
 
@@ -27,6 +28,7 @@ export function KeyboardGrid({
   mappingActions, // 🎁 → 🔥 (B. Mapping & Remap Actions)
   selectedTrigger, // 🚌🔥 → 🚌🔥 (C. UI Configuration)
   quickEditingKey,
+  macroNameMap,
   onKeyClick,
 }: KeyboardGridProps) {
   // layerId === "shift" の場合はShiftレイアウトを使用
@@ -51,6 +53,7 @@ export function KeyboardGrid({
                 keyDef={keyDef}
                 layerId={layerState.layerId} // ∈ → 🔥 (A. Layer Management Flow)
                 layout={layout} // 🚌🔥 → 🔥 (C. UI Configuration)
+                macroNameMap={macroNameMap}
                 onClick={onKeyClick}
                 onRemove={() => mappingActions.removeMapping(baseVk)} // ∈ → 🔥 (B. Mapping & Remap Actions)
                 selectedTrigger={selectedTrigger} // 🚌🔥 → 🔥 (C. UI Configuration)

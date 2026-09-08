@@ -9,6 +9,7 @@ import { HStack } from "@/components/template/Flex";
 import { useMacros } from "@/hooks/api/useMacros";
 import { DEFAULT_SCROLL_SENSITIVITY } from "@/models/bindingStateModel";
 import type { Action } from "@/types/remapConfig";
+import { getKeyLabel } from "@/utils/getKeyLabel";
 import { objectiveDiscriminantSwitch } from "@/utils/objectiveSwitch";
 import type { ActionSummaryHandlers } from "../organisms/macro/types";
 
@@ -38,7 +39,7 @@ export function ActionItem({
   >(
     {
       remap: (a) =>
-        `キー入力: **${a.keys.join(" + ")}**${a.repeat ? " ((リピート))" : ""}`,
+        `キー入力: **${getKeyLabel(a.keys, "JIS")}**${a.repeat ? " ((リピート))" : ""}`,
       delay: (a) => `待機: **${a.delayMs}ms**`,
       mouseMove: (a) =>
         `マウス移動: **X:${a.x ?? "維持"}, Y:${a.y ?? "維持"}**`,
