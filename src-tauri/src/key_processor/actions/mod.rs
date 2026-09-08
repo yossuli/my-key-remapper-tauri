@@ -3,41 +3,44 @@ pub mod layer_toggle;
 pub mod layer_momentary;
 pub mod macro_action;
 
-use crate::Config;
+use crate::{Action, Config};
 
 pub fn apply_action(
     physical_vk: u16,
-    action: &serde_json::Value,
+    action: &Action,
     is_atomic: bool,
     config: &Config,
     source_layer: Option<&str>,
 ) {
-    let action_type = action.get("type").and_then(|v| v.as_str()).unwrap_or("none");
-    log::info!("apply_action: vk={}, type={}, action={:?}", physical_vk, action_type, action);
-    match action_type {
-        "remap" => remap::apply(physical_vk, action, is_atomic, config, source_layer),
-        "layerToggle" => layer_toggle::apply(action, config),
-        "layerMomentary" => layer_momentary::apply(physical_vk, action, config),
-        "macro" => macro_action::apply(action, config),
-        "mouseMove" => {
-            let x = action.get("x").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-            let y = action.get("y").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-            crate::key_processor::utils::send_mouse_move(x, y);
+    log::info!("apply_action: vk={}, action={:?}", physical_vk, action);
+    match action {
+        Action::Remap { keys, repeat, .. } => {
+            remap::apply(physical_vk, keys, repeat.unwrap_or(false), is_atomic, config, source_layer);
         }
-        "mouseClick" => {
-            if let (Some(x), Some(y)) = (action.get("x").and_then(|v| v.as_i64()), action.get("y").and_then(|v| v.as_i64())) {
-                crate::key_processor::utils::send_mouse_move(x as i32, y as i32);
+        Action::LayerToggle { layer_id } => {
+            layer_toggle::apply(layer_id, config);
+        }
+        Action::LayerMomentary { layer_id } => {
+            layer_momentary::apply(physical_vk, layer_id, config);
+        }
+        Action::Macro { macro_id } => {
+            macro_action::apply(macro_id, config);
+        }
+        Action::MouseMove { x, y } => {
+            crate::key_processor::utils::send_mouse_move(x.unwrap_or(0), y.unwrap_or(0));
+        }
+        Action::MouseClick { x, y, button, click_count } => {
+            if let (Some(x_val), Some(y_val)) = (*x, *y) {
+                crate::key_processor::utils::send_mouse_move(x_val, y_val);
             }
-            let button = action.get("button").and_then(|v| v.as_str()).unwrap_or("left");
-            let click_count = action.get("clickCount").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
-            crate::key_processor::utils::send_mouse_click(button, click_count);
+            crate::key_processor::utils::send_mouse_click(button.as_str(), click_count.unwrap_or(1));
         }
-        "cursorSave" => {
+        Action::CursorSave => {
             let pos = crate::key_processor::utils::get_mouse_pos();
             crate::key_processor::state::get_state().lock().unwrap().saved_mouse_pos = Some(pos);
             log::info!("cursorSave: saved pos ({}, {})", pos.0, pos.1);
         }
-        "cursorRestore" => {
+        Action::CursorRestore => {
             if let Some(pos) = crate::key_processor::state::get_state().lock().unwrap().saved_mouse_pos {
                 crate::key_processor::utils::send_mouse_move(pos.0, pos.1);
                 log::info!("cursorRestore: restored to ({}, {})", pos.0, pos.1);
@@ -45,27 +48,26 @@ pub fn apply_action(
                 log::warn!("cursorRestore called but no position was saved");
             }
         }
-        "scrollMode" | "trackpadScroll" => {
-            let sensitivity = action.get("sensitivity").and_then(|v| v.as_f64()).unwrap_or(1.0);
-            let invert = action.get("invert").and_then(|v| v.as_bool()).unwrap_or(false);
-            let axis = action.get("axis").and_then(|v| v.as_str()).unwrap_or("both");
+        Action::ScrollMode { sensitivity, invert, axis } => {
+            let sens = sensitivity.unwrap_or(1.0);
+            let inv = invert.unwrap_or(false);
+            let ax = axis.map_or("both", |a| a.as_str());
 
             #[cfg(windows)]
-            crate::hook::set_scroll_mode_state(true, sensitivity, invert, axis);
+            crate::hook::set_scroll_mode_state(true, sens, inv, ax);
 
-            log::info!("scrollMode activated: sens={}, invert={}, axis={}", sensitivity, invert, axis);
+            log::info!("scrollMode activated: sens={}, invert={}, axis={}", sens, inv, ax);
         }
-        _ => {
-            log::warn!("Unhandled action type: {}", action_type);
+        Action::Delay { delay_ms } => {
+            std::thread::sleep(std::time::Duration::from_millis(*delay_ms as u64));
         }
+        Action::None => {}
     }
 }
 
-pub fn apply_repeat(physical_vk: u16, action: &serde_json::Value) {
-    let action_type = action.get("type").and_then(|v| v.as_str()).unwrap_or("none");
-    match action_type {
-        "remap" => remap::repeat(physical_vk, action),
-        _ => {}
+pub fn apply_repeat(physical_vk: u16, action: &Action) {
+    if let Action::Remap { keys, repeat: Some(true), .. } = action {
+        remap::repeat(physical_vk, keys);
     }
 }
 

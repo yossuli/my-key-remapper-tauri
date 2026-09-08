@@ -8,50 +8,14 @@ pub mod raw_input;
 pub mod key_processor;
 pub mod state_machine;
 pub mod profile;
+pub mod model;
 
-use serde::{Deserialize, Serialize};
+pub use model::*;
+
 use std::collections::HashMap;
 use arc_swap::ArcSwap;
 use std::sync::{Arc, Mutex};
 use tauri::{Manager, State};
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct Binding {
-    pub trigger: String,
-    pub action: Value,
-    #[serde(rename = "timingMs", skip_serializing_if = "Option::is_none")]
-    pub timing_ms: Option<u32>,
-    #[serde(rename = "interruptBehavior", skip_serializing_if = "Option::is_none")]
-    pub interrupt_behavior: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct Layer {
-    pub id: String,
-    #[serde(default)]
-    pub bindings: HashMap<String, Vec<Binding>>,
-    #[serde(default)]
-    pub default_modifiers: Option<Value>,
-    #[serde(default)]
-    pub passthrough_trigger_key: Option<bool>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct Config {
-    #[serde(default)]
-    pub version: u32,
-    #[serde(default)]
-    pub layers: Vec<Layer>,
-    #[serde(default)]
-    pub layer_order: Vec<String>,
-    #[serde(default)]
-    pub global_settings: Value,
-    #[serde(default)]
-    pub macros: Vec<Value>,
-}
 
 pub struct ConfigState {
     pub config: ArcSwap<Config>,
@@ -64,40 +28,60 @@ fn get_mappings(state: State<'_, ConfigState>) -> Config {
 }
 
 pub fn get_default_config() -> Config {
-    serde_json::from_value(serde_json::json!({
-        "version": 1,
-        "layers": [
-            {
-                "id": "base",
-                "bindings": {
-                    "160": [{"trigger": "hold", "action": {"type": "layerMomentary", "layerId": "shift"}}],
-                    "161": [{"trigger": "hold", "action": {"type": "layerMomentary", "layerId": "shift"}}]
-                }
+    Config {
+        version: 1,
+        layers: vec![
+            Layer {
+                id: "base".to_string(),
+                bindings: HashMap::from([
+                    (
+                        "160".to_string(),
+                        vec![Binding {
+                            trigger: Trigger::Hold,
+                            action: Action::LayerMomentary {
+                                layer_id: "shift".to_string(),
+                            },
+                            timing_ms: None,
+                            interrupt_behavior: None,
+                        }],
+                    ),
+                    (
+                        "161".to_string(),
+                        vec![Binding {
+                            trigger: Trigger::Hold,
+                            action: Action::LayerMomentary {
+                                layer_id: "shift".to_string(),
+                            },
+                            timing_ms: None,
+                            interrupt_behavior: None,
+                        }],
+                    ),
+                ]),
+                default_modifiers: None,
+                passthrough_trigger_key: None,
             },
-            {
-                "id": "shift",
-                "bindings": {},
-                "defaultModifiers": {"shift": true},
-                "passthroughTriggerKey": true
-            }
+            Layer {
+                id: "shift".to_string(),
+                bindings: HashMap::new(),
+                default_modifiers: Some(serde_json::json!({"shift": true})),
+                passthrough_trigger_key: Some(true),
+            },
         ],
-        "macros": [
-            {
-                "id": "cursor-return-macro",
-                "name": "カーソル位置を記憶して復帰",
-                "actions": [
-                    { "type": "cursorSave" },
-                    { "type": "delay", "delayMs": 50 },
-                    { "type": "cursorRestore" }
-                ]
-            }
-        ],
-        "layerOrder": ["base", "shift"],
-        "globalSettings": {
+        layer_order: vec!["base".to_string(), "shift".to_string()],
+        global_settings: serde_json::json!({
             "defaultHoldThresholdMs": 200,
             "defaultTapIntervalMs": 300
-        }
-    })).expect("Failed to parse initial config")
+        }),
+        macros: vec![MacroDef {
+            id: "cursor-return-macro".to_string(),
+            name: "カーソル位置を記憶して復帰".to_string(),
+            actions: vec![
+                Action::CursorSave,
+                Action::Delay { delay_ms: 50 },
+                Action::CursorRestore,
+            ],
+        }],
+    }
 }
 
 fn save_current_config(config: &Config, state: &State<'_, ConfigState>) {
@@ -151,13 +135,13 @@ fn get_pressed_keys() -> Vec<u32> {
 }
 
 #[tauri::command(rename = "get-macros")]
-fn get_macros(state: State<'_, ConfigState>) -> Value {
+fn get_macros(state: State<'_, ConfigState>) -> Vec<MacroDef> {
     let config = (**state.config.load()).clone();
-    serde_json::to_value(&config.macros).unwrap_or(serde_json::json!([]))
+    config.macros
 }
 
 #[tauri::command(rename = "save-macros")]
-fn save_macros(macros: Vec<Value>, state: State<'_, ConfigState>) {
+fn save_macros(macros: Vec<MacroDef>, state: State<'_, ConfigState>) {
     log::info!("save_macros: {:?}", macros);
     let mut config = (**state.config.load()).clone();
     config.macros = macros;
@@ -267,8 +251,8 @@ fn reorder_layers(new_order: Vec<String>, state: State<'_, ConfigState>) {
 }
 
 #[tauri::command(rename = "remove-binding")]
-fn remove_binding(layer_id: String, from: u32, trigger: String, state: State<'_, ConfigState>) {
-    log::info!("remove_binding: layer={}, from={}, trigger={}", layer_id, from, trigger);
+fn remove_binding(layer_id: String, from: u32, trigger: Trigger, state: State<'_, ConfigState>) {
+    log::info!("remove_binding: layer={}, from={}, trigger={:?}", layer_id, from, trigger);
     let mut config = (**state.config.load()).clone();
     if let Some(layer) = config.layers.iter_mut().find(|l| l.id == layer_id) {
         let from_str = from.to_string();

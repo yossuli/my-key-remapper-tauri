@@ -1,15 +1,22 @@
+import type {
+  Action as GeneratedAction,
+  Binding as GeneratedBinding,
+  InterruptBehavior as GeneratedInterruptBehavior,
+  MacroDef as GeneratedMacroDef,
+  MouseButton as GeneratedMouseButton,
+  ScrollAxis as GeneratedScrollAxis,
+  Trigger as GeneratedTrigger,
+} from "./generated";
+
 // =====================================
-// トリガー種別
+// 基本列挙型 (Rust自動同期)
 // =====================================
 
-/**
- * トリガーの種類
- * - tap: 単押し（短押し）
- * - hold: 長押し
- * - doubleTap: ダブルクリック
- * - tapHold: タップ後に長押し（未実装）
- */
-export type TriggerType = "tap" | "hold" | "doubleTap"; // | "tapHold";
+export type TriggerType = GeneratedTrigger;
+export type Trigger = GeneratedTrigger;
+export type MouseButton = GeneratedMouseButton;
+export type ScrollAxis = GeneratedScrollAxis;
+export type InterruptBehavior = GeneratedInterruptBehavior;
 
 // =====================================
 // 修飾キー
@@ -26,135 +33,35 @@ export interface ModifierOutput {
 }
 
 // =====================================
-// アクション
+// アクション (Rust自動同期)
 // =====================================
 
-/** 待機アクション */
-export interface DelayAction {
-  type: "delay";
-  delayMs: number;
-}
-
-/** マクロ参照アクション（キー割り当て用） */
-export interface MacroAction {
-  type: "macro";
-  macroId: string;
-}
-
-/** キーリマップアクション */
-export interface RemapAction {
-  type: "remap";
-  keys: number[];
-  /** 長押し中のリピート有効化 */
-  repeat?: boolean;
-  /** リピート開始までの遅延(ms) */
-  repeatDelayMs?: number;
-  /** リピート間隔(ms) */
-  repeatIntervalMs?: number;
-}
-
-/** レイヤー切り替えアクション（トグル） */
-export interface LayerToggleAction {
-  type: "layerToggle";
-  layerId: string;
-}
-
-/** レイヤー一時切り替えアクション（モーメンタリ） */
-export interface LayerMomentaryAction {
-  type: "layerMomentary";
-  layerId: string;
-}
-
-/** 無効化アクション */
-export interface NoneAction {
-  type: "none";
-}
-
-/** パススルーアクション（そのまま通す） */
-export interface PassthroughAction {
-  type: "passthrough";
-}
-
-/** マウスカーソル移動アクション */
-export interface MouseMoveAction {
-  type: "mouseMove";
-  /** 移動先X座標 (絶対ピクセル座標) */
-  x?: number;
-  /** 移動先Y座標 (絶対ピクセル座標) */
-  y?: number;
-}
-
-/** マウスクリックアクション */
-export interface MouseClickAction {
-  type: "mouseClick";
-  /** クリック座標X (絶対ピクセル座標) */
-  x?: number;
-  /** クリック座標Y (絶対ピクセル座標) */
-  y?: number;
-  /** クリックボタン */
-  button: "left" | "right" | "middle";
-  /** クリック回数 (1: シングル, 2: ダブル) */
-  clickCount?: number;
-}
-
-/** カーソル位置記憶アクション */
-export interface CursorSaveAction {
-  type: "cursorSave";
-}
-
-/** カーソル位置復元アクション */
-export interface CursorRestoreAction {
-  type: "cursorRestore";
-}
-
-/** トラックパッド/マウス スクロールモード アクション (キー押下中にスクロール化) */
-export interface ScrollModeAction {
-  type: "scrollMode";
-  /** スクロール感度 (0.2 〜 3.0, デフォルト 1.0) */
-  sensitivity?: number;
-  /** スクロール方向反転 (Natural Scroll) */
-  invert?: boolean;
-  /** スクロール軸 ("both" | "vertical" | "horizontal") */
-  axis?: "both" | "vertical" | "horizontal";
-}
-
-/** すべてのアクション種別 */
-export type Action =
-  | RemapAction
-  | LayerToggleAction
-  | LayerMomentaryAction
-  | NoneAction
-  | MouseMoveAction
-  | MouseClickAction
-  | CursorSaveAction
-  | CursorRestoreAction
-  | ScrollModeAction
-  | DelayAction
-  | MacroAction;
-// | PassthroughAction;
-
+/** すべてのアクション種別 (Rust側 Action enum から自動生成) */
+export type Action = GeneratedAction;
 export type ActionType = Action["type"];
 
-/** マクロ定義（データストア用） */
-export interface MacroDef {
-  id: string;
-  name: string;
-  /** マクロの手順。ネスト（マクロ内のマクロ呼び出し）は仕様上避けることが推奨される */
-  actions: Action[];
-}
+/** 個別アクション型（Action Tagged Union から自動抽出） */
+export type RemapAction = Extract<Action, { type: "remap" }>;
+export type LayerToggleAction = Extract<Action, { type: "layerToggle" }>;
+export type LayerMomentaryAction = Extract<Action, { type: "layerMomentary" }>;
+export type MacroAction = Extract<Action, { type: "macro" }>;
+export type MouseMoveAction = Extract<Action, { type: "mouseMove" }>;
+export type MouseClickAction = Extract<Action, { type: "mouseClick" }>;
+export type CursorSaveAction = Extract<Action, { type: "cursorSave" }>;
+export type CursorRestoreAction = Extract<Action, { type: "cursorRestore" }>;
+export type ScrollModeAction = Extract<Action, { type: "scrollMode" }>;
+export type DelayAction = Extract<Action, { type: "delay" }>;
+export type NoneAction = Extract<Action, { type: "none" }>;
+
+/** マクロ定義（Rust自動同期） */
+export type MacroDef = GeneratedMacroDef;
 
 // =====================================
-// キーバインディング
+// キーバインディング (Rust自動同期)
 // =====================================
 
-export interface KeyBinding {
-  trigger: TriggerType;
-  action: Action;
-  /** タイミング設定(ms)。Triggerに応じて意味が変わる。 hold=長押し判定時間、doubleTap=タップ間隔 */
-  timingMs?: number;
-  /** 割り込み時の挙動（Hold中など）。デフォルトは forceTap */
-  interruptBehavior?: "forceTap" | "forceHold" | "ignore";
-}
+export type KeyBinding = GeneratedBinding;
+export type Binding = GeneratedBinding;
 
 // =====================================
 // レイヤー

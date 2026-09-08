@@ -12,6 +12,7 @@
     "lint": "ultracite check",
     "format": "ultracite format",
     "typecheck": "tsc --noEmit",
+    "generate:types": "node scripts/cargo.mjs test -- model::export_bindings",
     "cargo:check": "node scripts/cargo.mjs check",
     "cargo:test": "node scripts/cargo.mjs test",
     "verify": "node scripts/verify.mjs",

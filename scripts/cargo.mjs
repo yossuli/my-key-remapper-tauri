@@ -17,6 +17,10 @@ const result = spawnSync(
   {
     encoding: "utf-8",
     timeout: 120_000,
+    env: {
+      ...process.env,
+      TS_RS_EXPORT_DIR: "src/types/generated/",
+    },
   }
 );
 

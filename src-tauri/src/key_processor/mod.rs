@@ -3,7 +3,7 @@ pub mod utils;
 pub mod actions;
 
 use smallvec::SmallVec;
-use crate::Config;
+use crate::{Action, Config, InterruptBehavior, Trigger};
 use crate::state_machine::{transition, ActionCommand, KeyCapability, KeyState, TriggerEvent};
 use std::time::Instant;
 use state::get_state;
@@ -90,16 +90,15 @@ impl KeyProcessor {
             return None;
         }
 
-        let has_tap = bindings.iter().any(|b| b.trigger == "tap");
-        let has_double_tap = bindings.iter().any(|b| b.trigger == "doubleTap");
-        let hold_binding = bindings.iter().find(|b| b.trigger == "hold");
+        let has_tap = bindings.iter().any(|b| b.trigger == Trigger::Tap);
+        let has_double_tap = bindings.iter().any(|b| b.trigger == Trigger::DoubleTap);
+        let hold_binding = bindings.iter().find(|b| b.trigger == Trigger::Hold);
         let has_hold = hold_binding.is_some();
 
         let is_passthrough = hold_binding
             .and_then(|hb| {
-                if hb.action.get("type")?.as_str()? == "layerMomentary" {
-                    let layer_id = hb.action.get("layerId")?.as_str()?;
-                    config.layers.iter().find(|l| l.id == layer_id)?.passthrough_trigger_key
+                if let Action::LayerMomentary { ref layer_id } = hb.action {
+                    config.layers.iter().find(|l| &l.id == layer_id)?.passthrough_trigger_key
                 } else {
                     None
                 }
@@ -120,10 +119,10 @@ impl KeyProcessor {
 
     fn get_action_with_layer<'a>(
         vk: u16,
-        trigger: &str,
+        trigger: Trigger,
         config: &'a Config,
         active_layers: &[String],
-    ) -> Option<(&'a str, &'a serde_json::Value)> {
+    ) -> Option<(&'a str, &'a Action)> {
         if let Some((layer_id, bindings)) = Self::get_bindings_with_layer(vk, config, active_layers) {
             if let Some(binding) = bindings.iter().find(|b| b.trigger == trigger) {
                 return Some((layer_id, &binding.action));
@@ -132,31 +131,26 @@ impl KeyProcessor {
         None
     }
 
-    fn get_action<'a>(vk: u16, trigger: &str, config: &'a Config, active_layers: &[String]) -> Option<&'a serde_json::Value> {
+    fn get_action<'a>(vk: u16, trigger: Trigger, config: &'a Config, active_layers: &[String]) -> Option<&'a Action> {
         Self::get_action_with_layer(vk, trigger, config, active_layers).map(|(_, a)| a)
     }
 
-    fn get_timing(vk: u16, trigger: &str, config: &Config, active_layers: &[String]) -> Option<u32> {
+    fn get_timing(vk: u16, trigger: Trigger, config: &Config, active_layers: &[String]) -> Option<u32> {
         Self::get_bindings(vk, config, active_layers)
             .and_then(|b| b.iter().find(|x| x.trigger == trigger))
             .and_then(|b| b.timing_ms)
     }
 
-    fn get_repeat_interval(vk: u16, trigger: &str, config: &Config, active_layers: &[String]) -> Option<u32> {
-        if let Some(action) = Self::get_action(vk, trigger, config, active_layers) {
-            if action.get("type").and_then(|v| v.as_str()) == Some("remap") {
-                if action.get("repeat").and_then(|v| v.as_bool()).unwrap_or(false) {
-                    if let Some(interval) = action.get("repeatIntervalMs").and_then(|v| v.as_u64()) {
-                        return Some(interval as u32);
-                    }
-                }
-            }
+    fn get_repeat_interval(vk: u16, trigger: Trigger, config: &Config, active_layers: &[String]) -> Option<u32> {
+        if let Some(Action::Remap { repeat: Some(true), repeat_interval_ms, .. }) = Self::get_action(vk, trigger, config, active_layers) {
+            *repeat_interval_ms
+        } else {
+            None
         }
-        None
     }
 
     fn execute_action(cmd: ActionCommand, vk: u16, config: &Config) {
-        let get_action = |trigger: &str| {
+        let get_action = |trigger: Trigger| {
             let state = get_state().lock().unwrap();
             Self::get_action_with_layer(vk, trigger, config, &state.active_layers)
         };
@@ -164,14 +158,14 @@ impl KeyProcessor {
         match cmd {
             ActionCommand::None => {}
             ActionCommand::ExecuteTap => {
-                if let Some((source_layer, action)) = get_action("tap") {
+                if let Some((source_layer, action)) = get_action(Trigger::Tap) {
                     apply_action(vk, action, false, config, Some(source_layer));
                 } else {
                     send_key_atomic(vk);
                 }
             }
             ActionCommand::ExecuteTapAtomic => {
-                if let Some((source_layer, action)) = get_action("tap") {
+                if let Some((source_layer, action)) = get_action(Trigger::Tap) {
                     apply_action(vk, action, true, config, Some(source_layer));
                 } else {
                     send_key_atomic(vk);
@@ -179,23 +173,23 @@ impl KeyProcessor {
                 get_state().lock().unwrap().pressed_vks.remove(&vk);
             }
             ActionCommand::ExecuteHold => {
-                if let Some((source_layer, action)) = get_action("hold") {
+                if let Some((source_layer, action)) = get_action(Trigger::Hold) {
                     apply_action(vk, action, false, config, Some(source_layer));
                 }
             }
             ActionCommand::ExecutePassthroughHoldDelayed => {
                 send_key_raw(vk, false);
-                if let Some((source_layer, action)) = get_action("hold") {
+                if let Some((source_layer, action)) = get_action(Trigger::Hold) {
                     apply_action(vk, action, false, config, Some(source_layer));
                 }
             }
             ActionCommand::ExecuteHoldRepeat => {
-                if let Some((_, action)) = get_action("hold") {
+                if let Some((_, action)) = get_action(Trigger::Hold) {
                     actions::apply_repeat(vk, action);
                 }
             }
             ActionCommand::ExecuteDoubleTap => {
-                if let Some((source_layer, action)) = get_action("doubleTap") {
+                if let Some((source_layer, action)) = get_action(Trigger::DoubleTap) {
                     apply_action(vk, action, false, config, Some(source_layer));
                 }
             }
@@ -233,15 +227,15 @@ impl KeyProcessor {
             None => return crate::state_machine::InterruptBehavior::ForceTap,
         };
 
-        let hold_binding = match bindings.iter().find(|b| b.trigger == "hold") {
+        let hold_binding = match bindings.iter().find(|b| b.trigger == Trigger::Hold) {
             Some(b) => b,
             None => return crate::state_machine::InterruptBehavior::ForceTap,
         };
 
-        let has_tap = bindings.iter().any(|b| b.trigger == "tap");
-        match (hold_binding.interrupt_behavior.as_deref(), has_tap) {
-            (Some("ignore"), _) => crate::state_machine::InterruptBehavior::Ignore,
-            (Some("forceHold"), _) | (None, false) => crate::state_machine::InterruptBehavior::ForceHold,
+        let has_tap = bindings.iter().any(|b| b.trigger == Trigger::Tap);
+        match (hold_binding.interrupt_behavior, has_tap) {
+            (Some(InterruptBehavior::Ignore), _) => crate::state_machine::InterruptBehavior::Ignore,
+            (Some(InterruptBehavior::ForceHold), _) | (None, false) => crate::state_machine::InterruptBehavior::ForceHold,
             _ => crate::state_machine::InterruptBehavior::ForceTap,
         }
     }
@@ -296,12 +290,12 @@ impl KeyProcessor {
         if is_down {
             match current_state {
                 KeyState::HoldActive { .. } | KeyState::PassthroughHoldActive { .. } => {
-                    if Self::get_repeat_interval(vk_code, "hold", config, &state_guard.active_layers).is_some() {
+                    if Self::get_repeat_interval(vk_code, Trigger::Hold, config, &state_guard.active_layers).is_some() {
                         return HookAction::Block;
                     }
                 }
                 KeyState::TapActive { .. } => {
-                    if Self::get_repeat_interval(vk_code, "tap", config, &state_guard.active_layers).is_some() {
+                    if Self::get_repeat_interval(vk_code, Trigger::Tap, config, &state_guard.active_layers).is_some() {
                         return HookAction::Block;
                     }
                 }
@@ -352,19 +346,19 @@ impl KeyProcessor {
     ) -> Option<TimerAction> {
         let (target_time, event) = match key_state {
             KeyState::WaitingForHold { pressed_at } => {
-                let timing = Self::get_timing(vk, "hold", config, active_layers).unwrap_or(200);
+                let timing = Self::get_timing(vk, Trigger::Hold, config, active_layers).unwrap_or(200);
                 (*pressed_at + std::time::Duration::from_millis(timing as u64), TriggerEvent::Timeout)
             }
             KeyState::WaitingForDoubleTap { first_released_at } => {
-                let timing = Self::get_timing(vk, "doubleTap", config, active_layers).unwrap_or(200);
+                let timing = Self::get_timing(vk, Trigger::DoubleTap, config, active_layers).unwrap_or(200);
                 (*first_released_at + std::time::Duration::from_millis(timing as u64), TriggerEvent::Timeout)
             }
             KeyState::HoldActive { last_repeated_at, .. } | KeyState::PassthroughHoldActive { last_repeated_at, .. } => {
-                let interval = Self::get_repeat_interval(vk, "hold", config, active_layers)?;
+                let interval = Self::get_repeat_interval(vk, Trigger::Hold, config, active_layers)?;
                 (*last_repeated_at + std::time::Duration::from_millis(interval as u64), TriggerEvent::CustomRepeat)
             }
             KeyState::TapActive { last_repeated_at, .. } => {
-                let interval = Self::get_repeat_interval(vk, "tap", config, active_layers)?;
+                let interval = Self::get_repeat_interval(vk, Trigger::Tap, config, active_layers)?;
                 (*last_repeated_at + std::time::Duration::from_millis(interval as u64), TriggerEvent::CustomRepeat)
             }
             _ => return None,
@@ -512,8 +506,13 @@ mod tests {
         {
             let base_layer = config.layers.iter_mut().find(|l| l.id == "base").unwrap();
             base_layer.bindings.insert("65".to_string(), vec![crate::Binding {
-                trigger: "tap".to_string(),
-                action: serde_json::json!({ "type": "remap", "keys": [66] }),
+                trigger: Trigger::Tap,
+                action: Action::Remap {
+                    keys: vec![66],
+                    repeat: None,
+                    repeat_delay_ms: None,
+                    repeat_interval_ms: None,
+                },
                 timing_ms: None,
                 interrupt_behavior: None,
             }]);
@@ -525,8 +524,8 @@ mod tests {
         {
             let base_layer = config.layers.iter_mut().find(|l| l.id == "base").unwrap();
             base_layer.bindings.insert("160".to_string(), vec![crate::Binding {
-                trigger: "hold".to_string(),
-                action: serde_json::json!({ "type": "layerMomentary", "layerId": "shift" }),
+                trigger: Trigger::Hold,
+                action: Action::LayerMomentary { layer_id: "shift".to_string() },
                 timing_ms: None,
                 interrupt_behavior: None,
             }]);
@@ -539,14 +538,19 @@ mod tests {
             let base_layer = config.layers.iter_mut().find(|l| l.id == "base").unwrap();
             base_layer.bindings.insert("29".to_string(), vec![
                 crate::Binding {
-                    trigger: "tap".to_string(),
-                    action: serde_json::json!({ "type": "remap", "keys": [29] }),
+                    trigger: Trigger::Tap,
+                    action: Action::Remap {
+                        keys: vec![29],
+                        repeat: None,
+                        repeat_delay_ms: None,
+                        repeat_interval_ms: None,
+                    },
                     timing_ms: None,
                     interrupt_behavior: None,
                 },
                 crate::Binding {
-                    trigger: "hold".to_string(),
-                    action: serde_json::json!({ "type": "layerMomentary", "layerId": "shift" }),
+                    trigger: Trigger::Hold,
+                    action: Action::LayerMomentary { layer_id: "shift".to_string() },
                     timing_ms: None,
                     interrupt_behavior: None,
                 },
@@ -564,8 +568,8 @@ mod tests {
         {
             let base_layer = config.layers.iter_mut().find(|l| l.id == "base").unwrap();
             base_layer.bindings.insert("160".to_string(), vec![crate::Binding {
-                trigger: "hold".to_string(),
-                action: serde_json::json!({ "type": "layerMomentary", "layerId": "shift" }),
+                trigger: Trigger::Hold,
+                action: Action::LayerMomentary { layer_id: "shift".to_string() },
                 timing_ms: None,
                 interrupt_behavior: None,
             }]);
@@ -614,10 +618,10 @@ mod tests {
         {
             let base_layer = config.layers.iter_mut().find(|l| l.id == "base").unwrap();
             base_layer.bindings.insert("29".to_string(), vec![crate::Binding {
-                trigger: "hold".to_string(),
-                action: serde_json::json!({ "type": "layerMomentary", "layerId": "num" }),
+                trigger: Trigger::Hold,
+                action: Action::LayerMomentary { layer_id: "num".to_string() },
                 timing_ms: Some(200),
-                interrupt_behavior: Some("forceHold".to_string()),
+                interrupt_behavior: Some(InterruptBehavior::ForceHold),
             }]);
         }
 

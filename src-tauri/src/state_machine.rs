@@ -81,12 +81,7 @@ pub enum ActionCommand {
     ReleaseDoubleTap,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InterruptBehavior {
-    ForceTap,
-    ForceHold,
-    Ignore,
-}
+pub use crate::model::InterruptBehavior;
 
 pub fn transition(
     state: KeyState,

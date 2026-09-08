@@ -28,24 +28,17 @@ fn determine_release_policy(
 
 pub fn apply(
     physical_vk: u16,
-    action: &serde_json::Value,
+    keys: &[u16],
+    repeat: bool,
     is_atomic: bool,
     config: &Config,
     source_layer: Option<&str>,
 ) {
-    let keys = match action.get("keys").and_then(|v| v.as_array()) {
-        Some(k) if !k.is_empty() => k,
-        _ => return,
-    };
-
-    let target_vks: SmallVec<[u16; 16]> = keys
-        .iter()
-        .filter_map(|k| k.as_u64().map(|v| v as u16))
-        .collect();
-
-    if target_vks.is_empty() {
+    if keys.is_empty() {
         return;
     }
+
+    let target_vks: SmallVec<[u16; 16]> = SmallVec::from_slice(keys);
 
     let suppressed = suppress_active_modifiers_for_remap(physical_vk, &target_vks, config, source_layer);
 
@@ -53,7 +46,6 @@ pub fn apply(
         send_key_down(physical_vk, target_vk);
     }
 
-    let repeat = action.get("repeat").and_then(|v| v.as_bool()).unwrap_or(false);
     let has_non_modifier = target_vks.iter().any(|&vk| !is_modifier(vk));
 
     match determine_release_policy(is_atomic, repeat, has_non_modifier, !suppressed.is_empty()) {
@@ -72,22 +64,11 @@ pub fn apply(
 }
 
 /// リマップアクションのリピート実行 (修飾キー以外のキーをアトミックに再押下・解放)
-pub fn repeat(physical_vk: u16, action: &serde_json::Value) {
-    if !action.get("repeat").and_then(|v| v.as_bool()).unwrap_or(false) {
-        return;
-    }
-
-    let keys = match action.get("keys").and_then(|v| v.as_array()) {
-        Some(k) if !k.is_empty() => k,
-        _ => return,
-    };
-
-    for k in keys {
-        if let Some(target_vk) = k.as_u64().map(|v| v as u16) {
-            if !is_modifier(target_vk) {
-                send_key_down(physical_vk, target_vk);
-                send_key_up(physical_vk, target_vk);
-            }
+pub fn repeat(physical_vk: u16, keys: &[u16]) {
+    for &target_vk in keys {
+        if !is_modifier(target_vk) {
+            send_key_down(physical_vk, target_vk);
+            send_key_up(physical_vk, target_vk);
         }
     }
 }
