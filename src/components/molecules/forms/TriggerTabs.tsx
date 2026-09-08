@@ -52,7 +52,9 @@ export function TriggerTabs({
     <div
       className={cn(
         "flex items-center gap-2",
-        isCompact ? undefined : "flex-col items-start",
+        isCompact
+          ? undefined
+          : "max-h-[calc(100vh-14rem)] min-h-0 w-full flex-1 flex-col items-start overflow-y-auto overflow-x-hidden pr-1 sm:max-h-[calc(100vh-16rem)]",
         className
       )}
     >
@@ -73,7 +75,7 @@ export function TriggerTabs({
         onValueChange={(val) => onTriggerChange(val as TriggerType)}
         value={selectedTrigger}
       >
-        <VStack gap={gap}>
+        <VStack className="w-full" gap={gap}>
           <TabsList
             className={cn(
               "h-auto bg-muted/30 p-1",

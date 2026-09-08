@@ -18,6 +18,7 @@ import {
 } from "@/models/bindingStateModel";
 import type { LayoutType } from "@/types";
 import type { Action, Layer, TriggerType } from "@/types/remapConfig";
+import { cn } from "@/utils/cn";
 
 export interface UnifiedActionEditorProps {
   // 初期状態
@@ -210,8 +211,8 @@ export function UnifiedActionEditor({
   const { actionType } = state;
   const containerClassName =
     targetVk !== undefined
-      ? "px-6 focus:outline-none"
-      : "h-full min-h-[400px] p-6 focus:outline-none";
+      ? "px-6 focus:outline-none flex-1 min-h-0"
+      : "h-full min-h-0 sm:min-h-[400px] p-6 focus:outline-none flex-1";
   const gap = targetVk !== undefined ? GAP_COMPACT : GAP_DEFAULT;
 
   console.log(
@@ -228,7 +229,7 @@ export function UnifiedActionEditor({
       tabIndex={0}
     >
       <Show condition={!!targetVk}>
-        <div className="flex items-center justify-center gap-4 font-bold text-2xl">
+        <div className="flex shrink-0 items-center justify-center gap-4 font-bold text-2xl">
           <KeyDisplay layout={layout} vkCode={targetVk || 0} />
           <Show condition={!!targetKeys && targetKeys.length > 0}>
             <Icon icon={ArrowRight} size="md" />
@@ -246,10 +247,13 @@ export function UnifiedActionEditor({
         </div>
       </Show>
       <Show condition={!targetVk}>
-        <h2 className="border-b pb-2 font-bold text-xl">アクションの編集</h2>
+        <h2 className="shrink-0 border-b pb-2 font-bold text-xl">
+          アクションの編集
+        </h2>
       </Show>
 
       <TriggerTabs
+        className="min-h-0 w-full flex-1"
         gap={4}
         onTriggerChange={handleTriggerChange}
         selectedTrigger={selectedTrigger}
@@ -280,7 +284,10 @@ export function UnifiedActionEditor({
         />
       </TriggerTabs>
       <HStack
-        className={targetVk ? "justify-end" : "justify-end border-t pt-4"}
+        className={cn(
+          "shrink-0",
+          targetVk ? "justify-end pt-2" : "justify-end border-t pt-4"
+        )}
         gap={2}
       >
         <Show condition={!!onRemove && !!targetVk}>
