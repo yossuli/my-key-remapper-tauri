@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
+import { useIpc } from "@/hooks/api/useIpc";
 import { DEFAULT_REMAP_CONFIG, type GlobalSettings } from "@/types/remapConfig";
 
 /**
@@ -15,6 +15,7 @@ export interface UseGlobalSettingsReturn {
  * グローバル設定を管理するカスタムフック
  */
 export function useGlobalSettings(): UseGlobalSettingsReturn {
+  const { invoke, send } = useIpc();
   const [globalSettings, setGlobalSettings] =
     useState<UseGlobalSettingsReturn["globalSettings"]>(null);
   const [isLoading, setIsLoading] =
@@ -41,16 +42,19 @@ export function useGlobalSettings(): UseGlobalSettingsReturn {
     };
 
     loadSettings();
-  }, []);
+  }, [invoke]);
 
   // 設定を更新
   const updateGlobalSettings = useCallback<
     UseGlobalSettingsReturn["updateGlobalSettings"]
-  >((settings) => {
-    invoke("update-global-settings", { settings });
-    // ローカルの状態も更新
-    setGlobalSettings((prev) => (prev ? { ...prev, ...settings } : prev));
-  }, []);
+  >(
+    (settings) => {
+      send("update-global-settings", { settings });
+      // ローカルの状態も更新
+      setGlobalSettings((prev) => (prev ? { ...prev, ...settings } : prev));
+    },
+    [send]
+  );
 
   return {
     globalSettings,

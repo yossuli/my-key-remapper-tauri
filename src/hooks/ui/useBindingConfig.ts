@@ -117,8 +117,18 @@ export function useBindingConfig({
         const binding = bindings?.find((b) => b.trigger === t);
 
         if (binding) {
-          setState(actionToBindingState(binding.action));
+          const nextState = actionToBindingState(binding.action);
+          console.log(
+            `[useBindingConfig] Loaded binding for VK ${targetVk} (${t}) on layer ${layerId}:`,
+            binding,
+            "-> State:",
+            nextState
+          );
+          setState(nextState);
         } else {
+          console.log(
+            `[useBindingConfig] No binding found for VK ${targetVk} (${t}) on layer ${layerId}`
+          );
           setState(createInitialBindingState());
         }
 

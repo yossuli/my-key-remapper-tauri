@@ -214,6 +214,10 @@ export function UnifiedActionEditor({
       : "h-full min-h-[400px] p-6 focus:outline-none";
   const gap = targetVk !== undefined ? GAP_COMPACT : GAP_DEFAULT;
 
+  console.log(
+    `[UnifiedActionEditor] Rendering: targetVk=${targetVk}, layerId=${layerId}, trigger=${selectedTrigger}, actionType=${actionType}`
+  );
+
   return (
     <VStack
       className={containerClassName}

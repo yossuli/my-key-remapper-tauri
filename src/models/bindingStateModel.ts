@@ -77,19 +77,32 @@ export type BindingState =
   | DelayBindingState
   | MacroBindingState;
 
+function extractTargetKeys(act: { keys?: number[]; to?: number }): number[] {
+  if (Array.isArray(act.keys)) {
+    return act.keys;
+  }
+  if (typeof act.to === "number") {
+    return [act.to];
+  }
+  return [];
+}
+
 /**
  * ActionからBindingStateへ変換
  */
 export function actionToBindingState(action: Action): BindingState {
   return objectiveDiscriminantSwitch<Action, "type", BindingState>(
     {
-      remap: (act) => ({
-        actionType: "remap",
-        targetKeys: act.keys,
-        repeat: act.repeat ?? false,
-        repeatDelayMs: act.repeatDelayMs ?? DEFAULT_REPEAT_DELAY_MS,
-        repeatIntervalMs: act.repeatIntervalMs ?? DEFAULT_REPEAT_INTERVAL_MS,
-      }),
+      remap: (act) => {
+        const targetKeys = extractTargetKeys(act as Action & { to?: number });
+        return {
+          actionType: "remap",
+          targetKeys,
+          repeat: act.repeat ?? false,
+          repeatDelayMs: act.repeatDelayMs ?? DEFAULT_REPEAT_DELAY_MS,
+          repeatIntervalMs: act.repeatIntervalMs ?? DEFAULT_REPEAT_INTERVAL_MS,
+        };
+      },
       layerToggle: (act) => ({
         actionType: "layerToggle",
         selectedLayerId: act.layerId,

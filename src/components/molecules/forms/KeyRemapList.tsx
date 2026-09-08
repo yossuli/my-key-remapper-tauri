@@ -27,7 +27,7 @@ export interface KeyRemapListProps {
 }
 
 export function KeyRemapList({
-  initialKeys,
+  initialKeys = [],
   layout,
   onKeysChange,
   isCaptureEnabled = false,
@@ -39,6 +39,7 @@ export function KeyRemapList({
   ignoredKeys = [],
   onCaptureActiveChange,
 }: KeyRemapListProps) {
+  const safeKeys = initialKeys ?? [];
   const [showVkInput, setShowVkInput] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
@@ -56,7 +57,7 @@ export function KeyRemapList({
   );
 
   const { inputKey, removeKey, onKeyDown, onKeyUp, reset } = useKeyCapture({
-    currentKeys: initialKeys,
+    currentKeys: safeKeys,
     onKeysChange,
   });
 
@@ -81,7 +82,7 @@ export function KeyRemapList({
       <HStack className="flex-wrap justify-center font-bold text-xl" gap={4}>
         <KeyRemapItems
           isRemoveDisabled={isRemoveDisabled}
-          keys={initialKeys}
+          keys={safeKeys}
           layout={layout}
           onRemoveKey={removeKey}
           showVkInput={showVkInput}
@@ -103,7 +104,7 @@ export function KeyRemapList({
 
         <Show
           as={Button}
-          condition={initialKeys.length > 0}
+          condition={safeKeys.length > 0}
           onClick={() => {
             reset();
             onClear?.();

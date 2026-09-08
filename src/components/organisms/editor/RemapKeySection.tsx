@@ -47,6 +47,8 @@ export function RemapKeySection({
   const [localRepeatIntervalMs, setLocalRepeatIntervalMs] =
     useState(repeatIntervalMs);
 
+  const safeKeys = targetKeys ?? [];
+
   const handleKeysChange = (keys: number[]) => {
     const repeatConfig: RepeatConfig = {
       enabled: localRepeat,
@@ -63,7 +65,7 @@ export function RemapKeySection({
       delayMs: localRepeatDelayMs,
       intervalMs: localRepeatIntervalMs,
     };
-    actionSetters.setRemapAction(targetKeys, repeatConfig);
+    actionSetters.setRemapAction(safeKeys, repeatConfig);
   };
 
   const handleRepeatDelayChange = (delayMs?: number) => {
@@ -74,7 +76,7 @@ export function RemapKeySection({
         delayMs,
         intervalMs: localRepeatIntervalMs,
       };
-      actionSetters.setRemapAction(targetKeys, repeatConfig);
+      actionSetters.setRemapAction(safeKeys, repeatConfig);
     }
   };
 
@@ -86,9 +88,14 @@ export function RemapKeySection({
         delayMs: localRepeatDelayMs,
         intervalMs,
       };
-      actionSetters.setRemapAction(targetKeys, repeatConfig);
+      actionSetters.setRemapAction(safeKeys, repeatConfig);
     }
   };
+
+  console.log(
+    `[RemapKeySection] Rendering targetVk: ${targetVk}, keys:`,
+    safeKeys
+  );
 
   return (
     <VStack gap={4}>
@@ -97,9 +104,9 @@ export function RemapKeySection({
         <Icon icon={ArrowRight} size="md" />
         <KeyRemapList
           ignoredKeys={[VK.ENTER, VK.ESCAPE, VK.TAB]}
-          initialKeys={targetKeys}
+          initialKeys={safeKeys}
           isCaptureEnabled={true}
-          isRemoveDisabled={() => targetKeys.length === 1}
+          isRemoveDisabled={() => safeKeys.length === 1}
           layout={layout}
           onClear={() => handleKeysChange([])}
           onInputFocusChange={setIsInputFocused}

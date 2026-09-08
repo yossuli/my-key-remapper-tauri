@@ -4,6 +4,7 @@ import { Button } from "@/components/atoms/Button";
 import { Icon } from "@/components/atoms/Icon";
 import { Text } from "@/components/atoms/Text";
 import { With } from "@/components/control/With";
+import { MockModeIndicator } from "@/components/molecules/MockModeIndicator";
 import { Box, HStack, VStack } from "@/components/template/Flex";
 
 interface AppHeaderProps {
@@ -33,7 +34,7 @@ export function AppHeader({
   const icon = simpleMode ? Eye : EyeOff;
   return (
     <HStack as="header" className="mb-8 items-center justify-between">
-      <HStack gap={3}>
+      <HStack className="items-center" gap={3}>
         <Box className="rounded-lg bg-primary/10 p-2">
           <Icon className="text-primary" icon={Keyboard} size="lg" />
         </Box>
@@ -45,6 +46,7 @@ export function AppHeader({
             Windows Native Hook
           </Text>
         </VStack>
+        <MockModeIndicator />
       </HStack>
 
       <HStack className="items-center" gap={2}>
