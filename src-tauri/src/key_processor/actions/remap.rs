@@ -26,6 +26,16 @@ fn determine_release_policy(
     }
 }
 
+/// キーシーケンスをアトミックに押下・解放送信する（マクロや物理キーなしのアクション用）
+pub fn send_key_sequence_atomic(keys: &[u16]) {
+    for &vk in keys {
+        crate::key_processor::utils::send_key_raw(vk, false);
+    }
+    for &vk in keys.iter().rev() {
+        crate::key_processor::utils::send_key_raw(vk, true);
+    }
+}
+
 pub fn apply(
     physical_vk: u16,
     keys: &[u16],
@@ -35,6 +45,11 @@ pub fn apply(
     source_layer: Option<&str>,
 ) {
     if keys.is_empty() {
+        return;
+    }
+    
+    if physical_vk == 0 {
+        send_key_sequence_atomic(keys);
         return;
     }
 
@@ -72,4 +87,3 @@ pub fn repeat(physical_vk: u16, keys: &[u16]) {
         }
     }
 }
-
