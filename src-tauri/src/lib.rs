@@ -35,7 +35,7 @@ pub fn get_default_config() -> Config {
                 id: "base".to_string(),
                 bindings: HashMap::from([
                     (
-                        "160".to_string(),
+                        160,
                         vec![Binding {
                             trigger: Trigger::Hold,
                             action: Action::LayerMomentary {
@@ -46,7 +46,7 @@ pub fn get_default_config() -> Config {
                         }],
                     ),
                     (
-                        "161".to_string(),
+                        161,
                         vec![Binding {
                             trigger: Trigger::Hold,
                             action: Action::LayerMomentary {
@@ -186,8 +186,8 @@ fn save_key_config(layer_id: String, from: u32, binding: Binding, state: State<'
     log::info!("save_key_config: layer_id={}, from={}, binding={:?}", layer_id, from, binding);
     let mut config = (**state.config.load()).clone();
     if let Some(layer) = config.layers.iter_mut().find(|l| l.id == layer_id) {
-        let from_str = from.to_string();
-        let bindings_arr = layer.bindings.entry(from_str).or_insert_with(Vec::new);
+        let from_vk = from as u16;
+        let bindings_arr = layer.bindings.entry(from_vk).or_default();
         bindings_arr.retain(|b| b.trigger != binding.trigger);
         bindings_arr.push(binding);
         save_current_config(&config, &state);
@@ -255,8 +255,8 @@ fn remove_binding(layer_id: String, from: u32, trigger: Trigger, state: State<'_
     log::info!("remove_binding: layer={}, from={}, trigger={:?}", layer_id, from, trigger);
     let mut config = (**state.config.load()).clone();
     if let Some(layer) = config.layers.iter_mut().find(|l| l.id == layer_id) {
-        let from_str = from.to_string();
-        if let Some(bindings_arr) = layer.bindings.get_mut(&from_str) {
+        let from_vk = from as u16;
+        if let Some(bindings_arr) = layer.bindings.get_mut(&from_vk) {
             bindings_arr.retain(|b| b.trigger != trigger);
             save_current_config(&config, &state);
             state.config.store(Arc::new(config));

@@ -163,7 +163,7 @@ pub struct Binding {
 pub struct Layer {
     pub id: String,
     #[serde(default)]
-    pub bindings: HashMap<String, Vec<Binding>>,
+    pub bindings: HashMap<u16, Vec<Binding>>,
     #[ts(optional)]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_modifiers: Option<Value>,

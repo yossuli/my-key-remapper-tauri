@@ -32,22 +32,6 @@ pub enum ReconcileAction {
     None,
 }
 
-#[inline]
-fn format_vk(vk: u16, buf: &mut [u8; 5]) -> &str {
-    let mut n = vk;
-    if n == 0 {
-        buf[4] = b'0';
-        return std::str::from_utf8(&buf[4..5]).unwrap();
-    }
-    let mut idx = 5;
-    while n > 0 {
-        idx -= 1;
-        buf[idx] = b'0' + (n % 10) as u8;
-        n /= 10;
-    }
-    std::str::from_utf8(&buf[idx..5]).unwrap()
-}
-
 pub struct KeyProcessor;
 
 impl KeyProcessor {
@@ -56,12 +40,10 @@ impl KeyProcessor {
         config: &'a Config,
         active_layers: &[String],
     ) -> Option<(&'a str, &'a Vec<crate::Binding>)> {
-        let mut vk_buf = [0u8; 5];
-        let vk_str = format_vk(vk, &mut vk_buf);
         for layer_id in config.layer_order.iter().rev() {
             if active_layers.contains(layer_id) || layer_id == "base" {
                 if let Some(layer) = config.layers.iter().find(|l| &l.id == layer_id) {
-                    if let Some(bindings) = layer.bindings.get(vk_str) {
+                    if let Some(bindings) = layer.bindings.get(&vk) {
                         if !bindings.is_empty() {
                             return Some((layer_id.as_str(), bindings));
                         }
@@ -505,7 +487,7 @@ mod tests {
 
         {
             let base_layer = config.layers.iter_mut().find(|l| l.id == "base").unwrap();
-            base_layer.bindings.insert("65".to_string(), vec![crate::Binding {
+            base_layer.bindings.insert(65, vec![crate::Binding {
                 trigger: Trigger::Tap,
                 action: Action::Remap {
                     keys: vec![66],
@@ -523,7 +505,7 @@ mod tests {
 
         {
             let base_layer = config.layers.iter_mut().find(|l| l.id == "base").unwrap();
-            base_layer.bindings.insert("160".to_string(), vec![crate::Binding {
+            base_layer.bindings.insert(160, vec![crate::Binding {
                 trigger: Trigger::Hold,
                 action: Action::LayerMomentary { layer_id: "shift".to_string() },
                 timing_ms: None,
@@ -536,7 +518,7 @@ mod tests {
 
         {
             let base_layer = config.layers.iter_mut().find(|l| l.id == "base").unwrap();
-            base_layer.bindings.insert("29".to_string(), vec![
+            base_layer.bindings.insert(29, vec![
                 crate::Binding {
                     trigger: Trigger::Tap,
                     action: Action::Remap {
@@ -567,7 +549,7 @@ mod tests {
         let mut config = create_test_config();
         {
             let base_layer = config.layers.iter_mut().find(|l| l.id == "base").unwrap();
-            base_layer.bindings.insert("160".to_string(), vec![crate::Binding {
+            base_layer.bindings.insert(160, vec![crate::Binding {
                 trigger: Trigger::Hold,
                 action: Action::LayerMomentary { layer_id: "shift".to_string() },
                 timing_ms: None,
@@ -617,7 +599,7 @@ mod tests {
 
         {
             let base_layer = config.layers.iter_mut().find(|l| l.id == "base").unwrap();
-            base_layer.bindings.insert("29".to_string(), vec![crate::Binding {
+            base_layer.bindings.insert(29, vec![crate::Binding {
                 trigger: Trigger::Hold,
                 action: Action::LayerMomentary { layer_id: "num".to_string() },
                 timing_ms: Some(200),
