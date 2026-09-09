@@ -64,6 +64,22 @@ pub fn is_modifier(vk: u16) -> bool {
     matches!(vk, VK_SHIFT | VK_CONTROL | VK_MENU | VK_LWIN | VK_RWIN | VK_LSHIFT | VK_RSHIFT | VK_LCONTROL | VK_RCONTROL | VK_LMENU | VK_RMENU)
 }
 
+pub fn is_shift(vk: u16) -> bool {
+    matches!(vk, VK_SHIFT | VK_LSHIFT | VK_RSHIFT)
+}
+
+pub fn is_ctrl(vk: u16) -> bool {
+    matches!(vk, VK_CONTROL | VK_LCONTROL | VK_RCONTROL)
+}
+
+pub fn is_alt(vk: u16) -> bool {
+    matches!(vk, VK_MENU | VK_LMENU | VK_RMENU)
+}
+
+pub fn is_win(vk: u16) -> bool {
+    matches!(vk, VK_LWIN | VK_RWIN)
+}
+
 /// 拡張キー（KEYEVENTF_EXTENDEDKEY フラグが必要なキー）であるかを判定
 pub fn is_extended_key(vk: u16) -> bool {
     matches!(
@@ -198,6 +214,9 @@ pub fn is_key_passed_through(vk: u16, state: &super::state::ProcessorState) -> b
     if !state.physically_pressed_modifiers.contains(&vk) {
         return false;
     }
+    if state.ghost_keys.contains(&vk) {
+        return false;
+    }
     if let Some(s) = state.key_states.get(&vk) {
         if *s != crate::state_machine::KeyState::Idle {
             return state.get_passthrough_trigger_keys().contains(&vk);
@@ -269,6 +288,10 @@ pub fn release_all_virtual_keys() {
         }
         state.key_states.clear();
         state.momentary_layers.clear();
+        state.momentary_keys.clear();
+        state.ghost_keys.clear();
+        state.physically_pressed_modifiers.clear();
+        state.active_layer_modifiers.clear();
         state.active_layers = vec!["base".to_string()];
         (targets, state.active_layers.clone())
     };
@@ -305,6 +328,8 @@ pub fn reconcile_physical_keys() {
             .pressed_vks
             .keys()
             .chain(state.momentary_layers.keys())
+            .chain(state.ghost_keys.iter())
+            .chain(state.momentary_keys.iter().map(|(k, _)| k))
             .copied()
             .collect()
     };
@@ -332,6 +357,12 @@ pub fn reconcile_physical_keys() {
         for vk in released_physical_keys {
             if let Some(vks) = state.pressed_vks.remove(&vk) {
                 targets.extend(vks);
+            }
+            state.key_states.remove(&vk);
+            state.ghost_keys.remove(&vk);
+            state.momentary_keys.retain(|&(k, _)| k != vk);
+            if is_modifier(vk) {
+                state.physically_pressed_modifiers.remove(&vk);
             }
             if let Some(pushed_layers) = state.momentary_layers.remove(&vk) {
                 for layer_to_remove in pushed_layers.iter().rev() {
@@ -397,22 +428,98 @@ pub fn compute_active_modifiers(active_layers: &[String], config: &Config) -> Ha
     out.into_iter().collect()
 }
 
-pub fn apply_layer_modifiers(old_layers: &[String], new_layers: &[String], config: &Config) {
-    let old_mods = compute_active_modifiers(old_layers, config);
-    let new_mods = compute_active_modifiers(new_layers, config);
+pub fn compute_desired_layer_modifiers(
+    state: &super::state::ProcessorState,
+    config: &Config,
+) -> HashSet<u16> {
+    let mut desired = HashSet::new();
 
-    let state = get_state().lock().unwrap();
+    let mut req_shift = false;
+    let mut req_ctrl = false;
+    let mut req_alt = false;
+    let mut req_win = false;
 
-    for &modifier in new_mods.difference(&old_mods) {
-        if !is_modifier_passed_through(modifier, &state) {
-            send_key_raw(modifier, false);
+    for layer_id in &state.active_layers {
+        let Some(layer) = config.layers.iter().find(|l| &l.id == layer_id) else { continue };
+        let Some(def_mods) = &layer.default_modifiers else { continue };
+
+        if def_mods.get("shift").and_then(|v| v.as_bool()).unwrap_or(false) {
+            req_shift = true;
+        }
+        if def_mods.get("ctrl").and_then(|v| v.as_bool()).unwrap_or(false) {
+            req_ctrl = true;
+        }
+        if def_mods.get("alt").and_then(|v| v.as_bool()).unwrap_or(false) {
+            req_alt = true;
+        }
+        if def_mods.get("win").and_then(|v| v.as_bool()).unwrap_or(false) {
+            req_win = true;
         }
     }
-    for &modifier in old_mods.difference(&new_mods) {
-        if !is_modifier_passed_through(modifier, &state) {
-            send_key_raw(modifier, true);
+
+    let has_passthrough_shift = state
+        .physically_pressed_modifiers
+        .iter()
+        .any(|&k| is_shift(k) && is_key_passed_through(k, state));
+    let has_passthrough_ctrl = state
+        .physically_pressed_modifiers
+        .iter()
+        .any(|&k| is_ctrl(k) && is_key_passed_through(k, state));
+    let has_passthrough_alt = state
+        .physically_pressed_modifiers
+        .iter()
+        .any(|&k| is_alt(k) && is_key_passed_through(k, state));
+    let has_passthrough_win = state
+        .physically_pressed_modifiers
+        .iter()
+        .any(|&k| is_win(k) && is_key_passed_through(k, state));
+
+    if req_shift {
+        if state.active_layer_modifiers.contains(&VK_LSHIFT) || !has_passthrough_shift {
+            desired.insert(VK_LSHIFT);
         }
     }
+    if req_ctrl {
+        if state.active_layer_modifiers.contains(&VK_LCONTROL) || !has_passthrough_ctrl {
+            desired.insert(VK_LCONTROL);
+        }
+    }
+    if req_alt {
+        if state.active_layer_modifiers.contains(&VK_LMENU) || !has_passthrough_alt {
+            desired.insert(VK_LMENU);
+        }
+    }
+    if req_win {
+        if state.active_layer_modifiers.contains(&VK_LWIN) || !has_passthrough_win {
+            desired.insert(VK_LWIN);
+        }
+    }
+
+    desired
+}
+
+pub fn reconcile_layer_modifiers(
+    state: &mut super::state::ProcessorState,
+    config: &Config,
+) {
+    let desired = compute_desired_layer_modifiers(state, config);
+
+    let to_release: Vec<u16> = state.active_layer_modifiers.difference(&desired).copied().collect();
+    let to_press: Vec<u16> = desired.difference(&state.active_layer_modifiers).copied().collect();
+
+    state.active_layer_modifiers = desired;
+
+    for vk in to_release {
+        send_key_raw(vk, true);
+    }
+    for vk in to_press {
+        send_key_raw(vk, false);
+    }
+}
+
+pub fn apply_layer_modifiers(_old_layers: &[String], _new_layers: &[String], config: &Config) {
+    let mut state = get_state().lock().unwrap();
+    reconcile_layer_modifiers(&mut state, config);
 }
 
 pub fn suppress_active_modifiers_for_remap(
@@ -478,11 +585,6 @@ pub fn suppress_active_modifiers_for_remap(
 
     to_suppress
 }
-
-fn is_shift(vk: u16) -> bool { vk == 16 || vk == 160 || vk == 161 }
-fn is_ctrl(vk: u16) -> bool { vk == 17 || vk == 162 || vk == 163 }
-fn is_alt(vk: u16) -> bool { vk == 18 || vk == 164 || vk == 165 }
-fn is_win(vk: u16) -> bool { vk == 91 || vk == 92 }
 
 pub fn restore_suppressed_modifiers(suppressed: &[u16]) {
     for &m in suppressed {
@@ -621,11 +723,21 @@ mod tests {
         send_key_down(0x50, 0x60);
         send_key_down(0x51, 0x61);
 
+        {
+            let mut state = get_state().lock().unwrap();
+            state.momentary_keys.push((0x50, std::time::Instant::now()));
+            state.ghost_keys.insert(0x51);
+            state.physically_pressed_modifiers.insert(VK_LSHIFT);
+        }
+
         release_all_virtual_keys();
 
         let state = get_state().lock().unwrap();
         assert!(state.pressed_vks.is_empty());
         assert!(state.key_states.is_empty());
+        assert!(state.momentary_keys.is_empty());
+        assert!(state.ghost_keys.is_empty());
+        assert!(state.physically_pressed_modifiers.is_empty());
         assert_eq!(state.active_layers, vec!["base".to_string()]);
     }
 

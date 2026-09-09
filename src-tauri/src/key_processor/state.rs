@@ -7,9 +7,12 @@ pub struct ProcessorState {
     pub active_layers: Vec<String>,
     pub pressed_vks: HashMap<u16, Vec<u16>>,
     pub momentary_layers: HashMap<u16, Vec<String>>,
+    pub momentary_keys: Vec<(u16, std::time::Instant)>,
+    pub ghost_keys: HashSet<u16>,
     pub saved_mouse_pos: Option<(i32, i32)>,
     pub suppressed_modifiers_for_key: HashMap<u16, Vec<u16>>,
     pub physically_pressed_modifiers: HashSet<u16>,
+    pub active_layer_modifiers: HashSet<u16>,
 }
 
 impl ProcessorState {
@@ -41,9 +44,12 @@ pub fn get_state_wrapper() -> &'static StateWrapper {
             active_layers: vec!["base".to_string()],
             pressed_vks: HashMap::new(),
             momentary_layers: HashMap::new(),
+            momentary_keys: Vec::new(),
+            ghost_keys: HashSet::new(),
             saved_mouse_pos: None,
             suppressed_modifiers_for_key: HashMap::new(),
             physically_pressed_modifiers: HashSet::new(),
+            active_layer_modifiers: HashSet::new(),
         }),
         cvar: Condvar::new(),
     })

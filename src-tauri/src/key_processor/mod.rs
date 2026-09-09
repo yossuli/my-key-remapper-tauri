@@ -8,7 +8,7 @@ use crate::state_machine::{transition, ActionCommand, KeyCapability, KeyState, T
 use std::time::Instant;
 use state::get_state;
 use utils::{
-    send_key_raw, send_key_atomic, apply_layer_modifiers,
+    send_key_raw, send_key_atomic,
     restore_suppressed_modifiers,
 };
 use actions::apply_action;
@@ -204,16 +204,134 @@ impl KeyProcessor {
             restore_suppressed_modifiers(&suppressed);
         }
 
-        if let Some(pushed_layers) = state.momentary_layers.remove(&vk) {
-            let old_layers = state.active_layers.clone();
-            for layer_to_remove in pushed_layers.iter().rev() {
-                if let Some(pos) = state.active_layers.iter().rposition(|l| l == layer_to_remove) {
-                    state.active_layers.remove(pos);
+        let is_momentary = state.momentary_layers.remove(&vk).is_some();
+        state.momentary_keys.retain(|&(k, _)| k != vk);
+        state.ghost_keys.remove(&vk);
+
+        if is_momentary {
+            let base_layer = state.active_layers.first().cloned().unwrap_or_else(|| "base".to_string());
+
+            let mut new_layers = vec![base_layer];
+            let mut new_momentary_layers = std::collections::HashMap::new();
+
+            // 残っているモーメンタリキーたちを、スタック追加時刻順（時系列昇順）でソート
+            let mut remaining_keys = state.momentary_keys.clone();
+            remaining_keys.sort_by_key(|&(_, t)| t);
+
+            // 再同期前に「透過中だったキー（PassthroughHoldActive）」の集合を記録
+            let mut old_passthrough_keys = std::collections::HashSet::new();
+            for &(rem_vk, _) in &remaining_keys {
+                if matches!(state.key_states.get(&rem_vk), Some(KeyState::PassthroughHoldActive { .. })) {
+                    old_passthrough_keys.insert(rem_vk);
                 }
             }
-            let new_layers = state.active_layers.clone();
+
+            let mut new_passthrough_keys = std::collections::HashSet::new();
+            let mut extra_keys_to_release = Vec::new();
+
+            for (rem_vk, _) in remaining_keys {
+                if let Some((_, bindings)) = Self::get_bindings_with_layer(rem_vk, config, &new_layers) {
+                    if let Some(hold_b) = bindings.iter().find(|b| b.trigger == Trigger::Hold) {
+                        if let Action::LayerMomentary { ref layer_id } = hold_b.action {
+                            let hierarchy = actions::layer_momentary::get_layer_hierarchy(layer_id, config);
+                            for lid in &hierarchy {
+                                new_layers.push(lid.clone());
+                            }
+                            new_momentary_layers.insert(rem_vk, hierarchy);
+
+                            // passthrough_trigger_key に応じて KeyState を双方向更新
+                            let is_pt = config.layers.iter().find(|l| &l.id == layer_id)
+                                .and_then(|l| l.passthrough_trigger_key)
+                                .unwrap_or(false);
+                            if let Some(ks) = state.key_states.get_mut(&rem_vk) {
+                                match *ks {
+                                    KeyState::HoldActive { activated_at, last_repeated_at } if is_pt => {
+                                        *ks = KeyState::PassthroughHoldActive { activated_at, last_repeated_at };
+                                    }
+                                    KeyState::PassthroughHoldActive { activated_at, last_repeated_at } if !is_pt => {
+                                        *ks = KeyState::HoldActive { activated_at, last_repeated_at };
+                                    }
+                                    _ => {}
+                                }
+                            }
+
+                            if is_pt {
+                                new_passthrough_keys.insert(rem_vk);
+                            }
+                            continue;
+                        }
+                    }
+                }
+                // もし親レイヤー解放等によりモーメンタリ設定を失った場合: ゴーストキーとしてマーク
+                state.ghost_keys.insert(rem_vk);
+
+                // 出力中の仮想キーがあれば解放対象へ回収
+                if let Some(vks) = state.pressed_vks.remove(&rem_vk) {
+                    extra_keys_to_release.extend(vks);
+                }
+
+                // リピート遮断および物理修飾キー・モーメンタリ追跡の終了
+                state.key_states.remove(&rem_vk);
+                state.momentary_layers.remove(&rem_vk);
+                if utils::is_modifier(rem_vk) {
+                    state.physically_pressed_modifiers.remove(&rem_vk);
+                }
+            }
+
+            // 生き残ったモーメンタリキーのみを残す（ゴースト化したキーを除外）
+            state.momentary_keys.retain(|&(k, _)| new_momentary_layers.contains_key(&k));
+
+            state.active_layers = new_layers.clone();
+            state.momentary_layers = new_momentary_layers;
+
+            let desired_injected = utils::compute_desired_layer_modifiers(&state, config);
+
+            // 1. モーメンタリ透過キー（passthroughTriggerKey）の差分同期
+            let mut pt_keys_to_release = Vec::new();
+            for &pt_vk in old_passthrough_keys.difference(&new_passthrough_keys) {
+                // もし新スタックのレイヤー合成修飾キーとして全く同一のキーコードが注入要求されているなら、
+                // KeyUp を送らずにそのまま active_layer_modifiers へ引き継ぐ（チャタリング防止）
+                if desired_injected.contains(&pt_vk) {
+                    state.active_layer_modifiers.insert(pt_vk);
+                } else {
+                    pt_keys_to_release.push(pt_vk);
+                }
+            }
+
+            let mut pt_keys_to_press = Vec::new();
+            for &pt_vk in new_passthrough_keys.difference(&old_passthrough_keys) {
+                // 既にレイヤー合成修飾キーとして注入されている場合は、物理透過キーへと引き継ぎ
+                // レイヤー管理から除外する（OS上は既にDownされているため、追加のKeyDownもその後のKeyUpも不要）
+                if state.active_layer_modifiers.contains(&pt_vk) {
+                    state.active_layer_modifiers.remove(&pt_vk);
+                } else {
+                    pt_keys_to_press.push(pt_vk);
+                }
+            }
+
             drop(state);
-            apply_layer_modifiers(&old_layers, &new_layers, config);
+
+            // ゴースト化により解放すべき仮想キー出力を解放
+            for vk in extra_keys_to_release {
+                send_key_raw(vk, true);
+            }
+
+            // 透過終了キーの解放 (KeyUp)
+            for vk in pt_keys_to_release {
+                send_key_raw(vk, true);
+            }
+
+            // 透過開始キーの押下補填 (KeyDown)
+            for vk in pt_keys_to_press {
+                send_key_raw(vk, false);
+            }
+
+            // 2. レイヤー合成修飾キーの宣言的収束 (Reconciliation)
+            {
+                let mut state = get_state().lock().unwrap();
+                utils::reconcile_layer_modifiers(&mut state, config);
+            }
+
             #[cfg(windows)]
             crate::hook::emit_layer_stack_changed(&new_layers);
         }
@@ -239,6 +357,20 @@ impl KeyProcessor {
 
     pub fn process_key(vk_code: u16, is_down: bool, config: &Config) -> HookAction {
         let mut state_guard = get_state().lock().unwrap();
+
+        if !is_down && state_guard.ghost_keys.remove(&vk_code) {
+            state_guard.key_states.remove(&vk_code);
+            state_guard.momentary_keys.retain(|&(k, _)| k != vk_code);
+            state_guard.momentary_layers.remove(&vk_code);
+            if utils::is_modifier(vk_code) {
+                state_guard.physically_pressed_modifiers.remove(&vk_code);
+            }
+            return HookAction::Block;
+        }
+
+        if is_down && state_guard.ghost_keys.contains(&vk_code) {
+            return HookAction::Block;
+        }
 
         if utils::is_modifier(vk_code) {
             if is_down {
@@ -1026,5 +1158,1155 @@ mod tests {
         let stack2 = vec!["base".to_string(), "top".to_string(), "bottom".to_string()];
         let (found_layer2, _) = KeyProcessor::get_bindings_with_layer(65, &config, &stack2).unwrap();
         assert_eq!(found_layer2, "bottom");
+    }
+
+    #[test]
+    fn test_muhenkan_shift_rollover_recovers_to_shift_layer() {
+        let _lock = state::TEST_LOCK.lock().unwrap();
+        let mut config = crate::get_default_config();
+        config.layers.clear();
+        config.layer_order = vec![
+            "base".to_string(),
+            "num".to_string(),
+            "shift".to_string(),
+            "num_shift".to_string(),
+        ];
+
+        // 1. base: 29(無変換) -> num, 160(Shift) -> shift
+        let mut base_bindings = std::collections::HashMap::new();
+        base_bindings.insert(29, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "num".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        base_bindings.insert(160, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "shift".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "base".to_string(),
+            bindings: base_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // 2. num: 160 -> num_shift, 74('J') -> Remap [192] (`)
+        let mut num_bindings = std::collections::HashMap::new();
+        num_bindings.insert(160, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "num_shift".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        num_bindings.insert(74, vec![crate::Binding {
+            trigger: Trigger::Tap,
+            action: Action::Remap {
+                keys: vec![192],
+                repeat: None,
+                repeat_delay_ms: None,
+                repeat_interval_ms: None,
+            },
+            timing_ms: None,
+            interrupt_behavior: None,
+        }]);
+        config.layers.push(crate::Layer {
+            id: "num".to_string(),
+            bindings: num_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // 3. shift: 29 -> num_shift, defaultModifiers: { shift: false }, passthroughTriggerKey: true
+        let mut shift_bindings = std::collections::HashMap::new();
+        shift_bindings.insert(29, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "num_shift".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "shift".to_string(),
+            bindings: shift_bindings,
+            default_modifiers: Some(serde_json::json!({"shift": false})),
+            passthrough_trigger_key: Some(true),
+            parent_layer_id: None,
+        });
+
+        // 4. num_shift: defaultModifiers: { shift: true } (74のバインディングなし)
+        config.layers.push(crate::Layer {
+            id: "num_shift".to_string(),
+            bindings: std::collections::HashMap::new(),
+            default_modifiers: Some(serde_json::json!({"shift": true})),
+            passthrough_trigger_key: None,
+            parent_layer_id: Some("num".to_string()),
+        });
+
+        // 状態初期化
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()];
+            state.key_states.clear();
+            state.momentary_layers.clear();
+            state.momentary_keys.clear();
+            state.ghost_keys.clear();
+            state.pressed_vks.clear();
+            state.suppressed_modifiers_for_key.clear();
+            state.physically_pressed_modifiers.clear();
+            utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        }
+
+        // 1. 無変換 (29) 押下 (WaitingForHold)
+        let _ = KeyProcessor::process_key(29, true, &config);
+
+        // 2. Shift (160) 押下 -> 29 が ForceHold で確定して num レイヤーへ
+        let _ = KeyProcessor::process_key(160, true, &config);
+        assert_eq!(get_state().lock().unwrap().active_layers, vec!["base", "num"]);
+
+        // 3. J (74) タップ (1回目) -> 160 が確定して num_shift へ、そして num の J -> 192 (`) が発火すること
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        let _ = KeyProcessor::process_key(74, true, &config);
+        let _ = KeyProcessor::process_key(74, false, &config);
+        let sent_1 = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        assert!(sent_1.iter().any(|&(vk, is_up)| vk == 192 && !is_up), "First J must output ` (192), sent: {:?}", sent_1);
+
+        // 4. 無変換 (29) リリース！
+        // ★重要: このリリースで残ったShift(160)が再評価され、スタックが直ちに [base, shift] に再同期すること！
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        let _ = KeyProcessor::process_key(29, false, &config);
+        let active = get_state().lock().unwrap().active_layers.clone();
+        assert_eq!(active, vec!["base".to_string(), "shift".to_string()], "Stack must re-evaluate to [base, shift]!");
+
+        // ★重要: 修飾キーの余計な KeyUp/KeyDown 再送信が発生していないこと
+        let sent_during_rel = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        assert!(
+            sent_during_rel.is_empty(),
+            "No spurious modifier KeyUp/KeyDown should be sent during re-evaluation! Sent: {:?}",
+            sent_during_rel
+        );
+
+        // 5. J (74) タップ (2回目) -> shift レイヤーに74の設定はないため、パススルー (HookAction::PassThrough) になり、
+        // 192 (`) に化けずに OS へ J が直接通ること（Shiftが効いているので大文字Jになる）！
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        let a_j_down = KeyProcessor::process_key(74, true, &config);
+        assert_eq!(a_j_down, HookAction::PassThrough, "Second J must be passed through directly to OS!");
+        let a_j_up = KeyProcessor::process_key(74, false, &config);
+        assert_eq!(a_j_up, HookAction::PassThrough);
+        let sent_2 = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        assert!(sent_2.is_empty(), "No remap keys (like 192) should be sent! Sent: {:?}", sent_2);
+
+        // 6. Shift (160) リリース -> [base] に戻り、パススルー (HookAction::PassThrough) で物理 KeyUp が直接 OS に通ること
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        let a_shift_up = KeyProcessor::process_key(160, false, &config);
+        assert_eq!(a_shift_up, HookAction::PassThrough, "Shift KeyUp must be passed through directly to OS!");
+        assert_eq!(get_state().lock().unwrap().active_layers, vec!["base".to_string()]);
+    }
+
+    #[test]
+    fn test_multi_level_nesting_rollover_order() {
+        let _lock = state::TEST_LOCK.lock().unwrap();
+        let mut config = crate::get_default_config();
+        config.layers.clear();
+        config.layer_order = vec![
+            "base".to_string(),
+            "layer1".to_string(),
+            "layer1_c".to_string(),
+            "layer1_bc".to_string(),
+        ];
+
+        // A=10: base -> layer1
+        let mut base_bindings = std::collections::HashMap::new();
+        base_bindings.insert(10, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer1".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "base".to_string(),
+            bindings: base_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // layer1: B=20 -> layer1_b (or simultaneous), C=30 -> layer1_c
+        let mut layer1_bindings = std::collections::HashMap::new();
+        layer1_bindings.insert(30, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer1_c".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        layer1_bindings.insert(20, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer1_b".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "layer1".to_string(),
+            bindings: layer1_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        config.layers.push(crate::Layer {
+            id: "layer1_c".to_string(),
+            bindings: std::collections::HashMap::new(),
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // 状態初期化
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()];
+            state.key_states.clear();
+            state.momentary_layers.clear();
+            state.momentary_keys.clear();
+            state.ghost_keys.clear();
+        }
+
+        // A(10)押下 -> B(20)押下(Aが確定) -> C(30)押下(Bが確定) -> ダミーキー40押下(Cが確定)
+        let _ = KeyProcessor::process_key(10, true, &config);
+        let _ = KeyProcessor::process_key(20, true, &config);
+        let _ = KeyProcessor::process_key(30, true, &config);
+        let _ = KeyProcessor::process_key(40, true, &config);
+
+        // B(20) をリリース！
+        let _ = KeyProcessor::process_key(20, false, &config);
+
+        // A(10) が先に評価され、その上で C(30) が評価されるため、スタックには layer1_c が残ること！
+        let active = get_state().lock().unwrap().active_layers.clone();
+        assert!(
+            active.contains(&"layer1_c".to_string()),
+            "C's layer must survive because A was evaluated first! Active: {:?}",
+            active
+        );
+    }
+
+    #[test]
+    fn test_ghost_key_prevented_from_leaking() {
+        let _lock = state::TEST_LOCK.lock().unwrap();
+        let mut config = crate::get_default_config();
+        config.layers.clear();
+
+        // A=10: base -> layer1
+        let mut base_bindings = std::collections::HashMap::new();
+        base_bindings.insert(10, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer1".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        // Base で B=20 は Tap -> Remap [99] (通常文字)
+        base_bindings.insert(20, vec![crate::Binding {
+            trigger: Trigger::Tap,
+            action: Action::Remap { keys: vec![99], repeat: None, repeat_delay_ms: None, repeat_interval_ms: None },
+            timing_ms: None,
+            interrupt_behavior: None,
+        }]);
+        config.layers.push(crate::Layer {
+            id: "base".to_string(),
+            bindings: base_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // layer1: B=20 -> Hold(sublayer)
+        let mut layer1_bindings = std::collections::HashMap::new();
+        layer1_bindings.insert(20, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "sublayer".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "layer1".to_string(),
+            bindings: layer1_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // 状態初期化
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()];
+            state.key_states.clear();
+            state.momentary_layers.clear();
+            state.momentary_keys.clear();
+            state.ghost_keys.clear();
+            utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        }
+
+        // 1. A(10) 押下 -> B(20) 押下で A(10) が確定
+        let _ = KeyProcessor::process_key(10, true, &config);
+        let _ = KeyProcessor::process_key(20, true, &config);
+        // 2. ダミーキー30押下で B(20) が確定
+        let _ = KeyProcessor::process_key(30, true, &config);
+
+        // 3. 親キー A(10) をリリース！
+        // B は Base では Hold が定義されていないため、ゴーストキーとしてマークされる
+        let _ = KeyProcessor::process_key(10, false, &config);
+        assert!(get_state().lock().unwrap().ghost_keys.contains(&20), "B must be ghosted");
+
+        // 4. B(20) を物理的に離す (KeyUp)
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        let action = KeyProcessor::process_key(20, false, &config);
+        assert_eq!(action, HookAction::Block, "Ghost key KeyUp must be blocked");
+
+        // Base の Remap [99] が誤爆送信されていないこと！
+        let sent = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        assert!(sent.is_empty(), "No spurious base keys should be sent when ghost key is released!");
+    }
+
+    #[test]
+    fn test_ghost_key_releases_passthrough_output_and_cleans_modifier() {
+        let _lock = state::TEST_LOCK.lock().unwrap();
+        let mut config = crate::get_default_config();
+        config.layers.clear();
+
+        // A=10: base -> layer_a
+        let mut base_bindings = std::collections::HashMap::new();
+        base_bindings.insert(10, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_a".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "base".to_string(),
+            bindings: base_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // layer_a: LSHIFT(0xA0) -> Hold(layer_b), passthrough_trigger_key: true
+        let mut layer_a_bindings = std::collections::HashMap::new();
+        layer_a_bindings.insert(utils::VK_LSHIFT, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_b".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "layer_a".to_string(),
+            bindings: layer_a_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        config.layers.push(crate::Layer {
+            id: "layer_b".to_string(),
+            bindings: std::collections::HashMap::new(),
+            default_modifiers: None,
+            passthrough_trigger_key: Some(true),
+            parent_layer_id: None,
+        });
+
+        // 状態初期化
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()];
+            state.key_states.clear();
+            state.momentary_layers.clear();
+            state.momentary_keys.clear();
+            state.ghost_keys.clear();
+            state.physically_pressed_modifiers.clear();
+            utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        }
+
+        // 1. A(10) 押下 -> Shift(0xA0) 押下 -> ダミー(30)押下で Shift が PassthroughHoldActive に確定
+        let _ = KeyProcessor::process_key(10, true, &config);
+        let _ = KeyProcessor::process_key(utils::VK_LSHIFT, true, &config);
+        let _ = KeyProcessor::process_key(30, true, &config);
+
+        assert!(get_state().lock().unwrap().physically_pressed_modifiers.contains(&utils::VK_LSHIFT));
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+
+        // 2. 親キー A(10) をリリース！
+        // Shift は Base ではモーメンタリ設定を持たないため、ゴーストキーに移行する
+        let _ = KeyProcessor::process_key(10, false, &config);
+
+        // 検証1: 透過中だった Shift の KeyUp (is_up: true) が直ちに送信されていること！
+        let sent = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        assert!(
+            sent.iter().any(|&(vk, is_up)| vk == utils::VK_LSHIFT && is_up),
+            "Shift KeyUp must be sent when passthrough key is ghosted!"
+        );
+
+        // 検証2: physically_pressed_modifiers から Shift が削除されていること！
+        assert!(
+            !get_state().lock().unwrap().physically_pressed_modifiers.contains(&utils::VK_LSHIFT),
+            "Shift must be removed from physically_pressed_modifiers on ghost transition"
+        );
+
+        // 検証3: Shift のオートリピート KeyDown が来てもブロックされ、OS に送信されないこと！
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        let repeat_action = KeyProcessor::process_key(utils::VK_LSHIFT, true, &config);
+        assert_eq!(repeat_action, HookAction::Block, "Repeat KeyDown for ghost key must be blocked");
+        let sent_repeat = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        assert!(sent_repeat.is_empty(), "No keys should be sent on ghost repeat");
+
+        // 検証4: Shift を物理的に離したとき (KeyUp) もブロックされ、ゴーストキーが片付くこと！
+        let up_action = KeyProcessor::process_key(utils::VK_LSHIFT, false, &config);
+        assert_eq!(up_action, HookAction::Block, "Ghost KeyUp must be blocked");
+        assert!(
+            !get_state().lock().unwrap().ghost_keys.contains(&utils::VK_LSHIFT),
+            "Ghost key must be cleared after physical release"
+        );
+    }
+
+    #[test]
+    fn test_ghost_key_does_not_resurrect_after_release() {
+        let _lock = state::TEST_LOCK.lock().unwrap();
+        let mut config = crate::get_default_config();
+        config.layers.clear();
+
+        // A=10: base -> layer_a
+        let mut base_bindings = std::collections::HashMap::new();
+        base_bindings.insert(10, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_a".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "base".to_string(),
+            bindings: base_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // layer_a: B=20 -> Hold(layer_b)
+        let mut layer_a_bindings = std::collections::HashMap::new();
+        layer_a_bindings.insert(20, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_b".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "layer_a".to_string(),
+            bindings: layer_a_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        config.layers.push(crate::Layer {
+            id: "layer_b".to_string(),
+            bindings: std::collections::HashMap::new(),
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // 状態初期化
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()];
+            state.key_states.clear();
+            state.momentary_layers.clear();
+            state.momentary_keys.clear();
+            state.ghost_keys.clear();
+        }
+
+        // 1. A(10) 押下 -> B(20) 押下 -> ダミー(30)押下で B 確定
+        let _ = KeyProcessor::process_key(10, true, &config);
+        let _ = KeyProcessor::process_key(20, true, &config);
+        let _ = KeyProcessor::process_key(30, true, &config);
+
+        // 2. A(10) をリリース -> B はゴースト化
+        let _ = KeyProcessor::process_key(10, false, &config);
+        assert!(get_state().lock().unwrap().ghost_keys.contains(&20));
+        assert!(
+            !get_state().lock().unwrap().momentary_keys.iter().any(|&(k, _)| k == 20),
+            "Ghosted key 20 must be removed from momentary_keys immediately"
+        );
+
+        // 3. B(20) をリリース
+        let _ = KeyProcessor::process_key(20, false, &config);
+        assert!(!get_state().lock().unwrap().ghost_keys.contains(&20));
+
+        // 4. 再度 A(10) を押下・リリース
+        let _ = KeyProcessor::process_key(10, true, &config);
+        let _ = KeyProcessor::process_key(10, false, &config);
+
+        // B(20) がゴーストキーや momentary_keys に再出現していないこと！
+        assert!(!get_state().lock().unwrap().ghost_keys.contains(&20));
+        assert!(!get_state().lock().unwrap().momentary_keys.iter().any(|&(k, _)| k == 20));
+
+        // 5. 通常キーとして B(20) を押下・リリースしたとき、KeyUp が Block されず PassThrough されること！
+        let down_action = KeyProcessor::process_key(20, true, &config);
+        assert_eq!(down_action, HookAction::PassThrough);
+        let up_action = KeyProcessor::process_key(20, false, &config);
+        assert_eq!(up_action, HookAction::PassThrough);
+    }
+
+    #[test]
+    fn test_ghosting_passthrough_key_does_not_release_modifier_held_by_other_layer() {
+        let _lock = state::TEST_LOCK.lock().unwrap();
+        let mut config = crate::get_default_config();
+        config.layers.clear();
+
+        // 1. base:
+        //    - 10 (A): Hold -> layer_a
+        //    - 50 (X): Hold -> layer_x
+        let mut base_bindings = std::collections::HashMap::new();
+        base_bindings.insert(10, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_a".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        base_bindings.insert(50, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_x".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "base".to_string(),
+            bindings: base_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // 2. layer_x: default_modifiers: { shift: true }
+        config.layers.push(crate::Layer {
+            id: "layer_x".to_string(),
+            bindings: std::collections::HashMap::new(),
+            default_modifiers: Some(serde_json::json!({"shift": true})),
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // 3. layer_a: LSHIFT(0xA0) -> Hold(layer_b)
+        let mut layer_a_bindings = std::collections::HashMap::new();
+        layer_a_bindings.insert(utils::VK_LSHIFT, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_b".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "layer_a".to_string(),
+            bindings: layer_a_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // 4. layer_b: passthrough_trigger_key: true
+        config.layers.push(crate::Layer {
+            id: "layer_b".to_string(),
+            bindings: std::collections::HashMap::new(),
+            default_modifiers: None,
+            passthrough_trigger_key: Some(true),
+            parent_layer_id: None,
+        });
+
+        // 状態初期化
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()];
+            state.key_states.clear();
+            state.momentary_layers.clear();
+            state.momentary_keys.clear();
+            state.ghost_keys.clear();
+            state.physically_pressed_modifiers.clear();
+            utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        }
+
+        // X(50) 押下 -> layer_x がアクティブになり Shift Down が送信される
+        let _ = KeyProcessor::process_key(50, true, &config);
+        let _ = KeyProcessor::process_key(999, true, &config); // 確定ダミー
+        assert!(get_state().lock().unwrap().active_layers.contains(&"layer_x".to_string()));
+
+        // A(10) 押下 -> layer_a がアクティブ
+        let _ = KeyProcessor::process_key(10, true, &config);
+        let _ = KeyProcessor::process_key(998, true, &config); // 確定ダミー
+
+        // Shift(0xA0) 押下 -> layer_b がアクティブ (透過Shift)
+        let _ = KeyProcessor::process_key(utils::VK_LSHIFT, true, &config);
+        let _ = KeyProcessor::process_key(997, true, &config); // 確定ダミー
+        assert!(matches!(
+            get_state().lock().unwrap().key_states.get(&utils::VK_LSHIFT),
+            Some(KeyState::PassthroughHoldActive { .. })
+        ));
+
+        // 送信ログをクリア
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+
+        // A(10) を解放 (KeyUp)！
+        // Shift は Base でモーメンタリ設定を持たないためゴースト化するが、
+        // スタックには layer_x (shift: true) が残っている！
+        let _ = KeyProcessor::process_key(10, false, &config);
+
+        // ★ 検証: layer_x が残っているため、Shift Up が誤送信されていないこと！
+        let sent = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        let shift_up_sent = sent.iter().any(|&(vk, is_up)| (vk == utils::VK_SHIFT || vk == utils::VK_LSHIFT) && is_up);
+        assert!(!shift_up_sent, "Shift Up must NOT be sent while layer_x still requires Shift! Sent: {:?}", sent);
+
+        // クリーンアップ: ゴースト化した Shift(160) と X(50) を物理解放
+        let _ = KeyProcessor::process_key(utils::VK_LSHIFT, false, &config);
+        let _ = KeyProcessor::process_key(50, false, &config);
+    }
+
+    #[test]
+    fn test_transition_from_passthrough_to_non_passthrough_releases_output_and_blocks_repeat() {
+        let _lock = state::TEST_LOCK.lock().unwrap();
+        let mut config = crate::get_default_config();
+        config.layers.clear();
+
+        // base: A(10) -> layer_a, Shift(0xA0) -> layer_base_shift (非透過: None)
+        let mut base_bindings = std::collections::HashMap::new();
+        base_bindings.insert(10, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_a".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        base_bindings.insert(utils::VK_LSHIFT, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_base_shift".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "base".to_string(),
+            bindings: base_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // layer_a: Shift(0xA0) -> layer_a_shift (透過: true)
+        let mut layer_a_bindings = std::collections::HashMap::new();
+        layer_a_bindings.insert(utils::VK_LSHIFT, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_a_shift".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "layer_a".to_string(),
+            bindings: layer_a_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        config.layers.push(crate::Layer {
+            id: "layer_a_shift".to_string(),
+            bindings: std::collections::HashMap::new(),
+            default_modifiers: None,
+            passthrough_trigger_key: Some(true),
+            parent_layer_id: None,
+        });
+
+        config.layers.push(crate::Layer {
+            id: "layer_base_shift".to_string(),
+            bindings: std::collections::HashMap::new(),
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // 状態初期化
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()];
+            state.key_states.clear();
+            state.momentary_layers.clear();
+            state.momentary_keys.clear();
+            state.ghost_keys.clear();
+            state.physically_pressed_modifiers.clear();
+            utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        }
+
+        // 1. A(10) 押下 -> Shift(0xA0) 押下 -> ダミー押下で Shift 確定 (透過)
+        let _ = KeyProcessor::process_key(10, true, &config);
+        let _ = KeyProcessor::process_key(utils::VK_LSHIFT, true, &config);
+        let _ = KeyProcessor::process_key(999, true, &config);
+        assert!(matches!(
+            get_state().lock().unwrap().key_states.get(&utils::VK_LSHIFT),
+            Some(KeyState::PassthroughHoldActive { .. })
+        ));
+
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+
+        // 2. A(10) を解放！Shift は Base の layer_base_shift (非透過) に移行
+        let _ = KeyProcessor::process_key(10, false, &config);
+
+        // ★ 検証1: 透過がオフになったため、OS へ Shift Up が送信されたこと！
+        let sent = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        let shift_up_sent = sent.iter().any(|&(vk, is_up)| (vk == utils::VK_SHIFT || vk == utils::VK_LSHIFT) && is_up);
+        assert!(shift_up_sent, "Shift Up must be sent when transitioning to non-passthrough! Sent: {:?}", sent);
+
+        // ★ 検証2: Shift の KeyState が HoldActive (非透過) に降格していること！
+        assert!(matches!(
+            get_state().lock().unwrap().key_states.get(&utils::VK_LSHIFT),
+            Some(KeyState::HoldActive { .. })
+        ));
+
+        // ★ 検証3: Shift のリピート KeyDown が来ても Block されること！
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        let repeat_action = KeyProcessor::process_key(utils::VK_LSHIFT, true, &config);
+        assert_eq!(repeat_action, HookAction::Block);
+        let sent_repeat = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        assert!(sent_repeat.is_empty(), "No keys should be sent on non-passthrough repeat");
+
+        // クリーンアップ: Shift を物理解放
+        let _ = KeyProcessor::process_key(utils::VK_LSHIFT, false, &config);
+    }
+
+    #[test]
+    fn test_transition_from_non_passthrough_to_passthrough_sends_required_keydown() {
+        let _lock = state::TEST_LOCK.lock().unwrap();
+        let mut config = crate::get_default_config();
+        config.layers.clear();
+
+        // base: A(10) -> layer_a, Shift(0xA0) -> layer_base_shift (透過: true)
+        let mut base_bindings = std::collections::HashMap::new();
+        base_bindings.insert(10, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_a".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        base_bindings.insert(utils::VK_LSHIFT, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_base_shift".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "base".to_string(),
+            bindings: base_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // layer_a: Shift(0xA0) -> layer_a_shift (非透過: None)
+        let mut layer_a_bindings = std::collections::HashMap::new();
+        layer_a_bindings.insert(utils::VK_LSHIFT, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_a_shift".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "layer_a".to_string(),
+            bindings: layer_a_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        config.layers.push(crate::Layer {
+            id: "layer_a_shift".to_string(),
+            bindings: std::collections::HashMap::new(),
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        config.layers.push(crate::Layer {
+            id: "layer_base_shift".to_string(),
+            bindings: std::collections::HashMap::new(),
+            default_modifiers: None,
+            passthrough_trigger_key: Some(true),
+            parent_layer_id: None,
+        });
+
+        // 状態初期化
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()];
+            state.key_states.clear();
+            state.momentary_layers.clear();
+            state.momentary_keys.clear();
+            state.ghost_keys.clear();
+            state.physically_pressed_modifiers.clear();
+            utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        }
+
+        // 1. A(10) 押下 -> Shift(0xA0) 押下 -> ダミー押下で Shift 確定 (非透過)
+        let _ = KeyProcessor::process_key(10, true, &config);
+        let _ = KeyProcessor::process_key(utils::VK_LSHIFT, true, &config);
+        let _ = KeyProcessor::process_key(999, true, &config);
+        assert!(matches!(
+            get_state().lock().unwrap().key_states.get(&utils::VK_LSHIFT),
+            Some(KeyState::HoldActive { .. })
+        ));
+
+        // 送信ログクリア (非透過なので Shift Down は送られていない)
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+
+        // 2. A(10) を解放！Shift は Base の layer_base_shift (透過) に移行
+        let _ = KeyProcessor::process_key(10, false, &config);
+
+        // ★ 検証1: 透過になったため、OS へ Shift Down (is_up: false) が送信されたこと！
+        let sent = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        let shift_down_sent = sent.iter().any(|&(vk, is_up)| (vk == utils::VK_SHIFT || vk == utils::VK_LSHIFT) && !is_up);
+        assert!(shift_down_sent, "Shift Down must be sent when transitioning to passthrough! Sent: {:?}", sent);
+
+        // ★ 検証2: Shift の KeyState が PassthroughHoldActive に昇格していること！
+        assert!(matches!(
+            get_state().lock().unwrap().key_states.get(&utils::VK_LSHIFT),
+            Some(KeyState::PassthroughHoldActive { .. })
+        ));
+
+        // 3. Shift を物理リリース
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        let up_action = KeyProcessor::process_key(utils::VK_LSHIFT, false, &config);
+        assert_eq!(up_action, HookAction::PassThrough);
+    }
+
+    #[test]
+    fn test_plain_physical_modifier_not_released_when_layer_modifier_deactivated() {
+        let _lock = state::TEST_LOCK.lock().unwrap();
+        let mut config = crate::get_default_config();
+        config.layers.clear();
+
+        // base: A(10) -> layer_ctrl
+        let mut base_bindings = std::collections::HashMap::new();
+        base_bindings.insert(10, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_ctrl".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "base".to_string(),
+            bindings: base_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // layer_ctrl: default_modifiers: { ctrl: true }
+        config.layers.push(crate::Layer {
+            id: "layer_ctrl".to_string(),
+            bindings: std::collections::HashMap::new(),
+            default_modifiers: Some(serde_json::json!({"ctrl": true})),
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // 状態初期化
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()];
+            state.key_states.clear();
+            state.momentary_layers.clear();
+            state.momentary_keys.clear();
+            state.ghost_keys.clear();
+            state.physically_pressed_modifiers.clear();
+            utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        }
+
+        // 1. 通常の物理 LCONTROL(162) を押下 (素通し)
+        let a1 = KeyProcessor::process_key(utils::VK_LCONTROL, true, &config);
+        assert_eq!(a1, HookAction::PassThrough);
+        assert!(get_state().lock().unwrap().physically_pressed_modifiers.contains(&utils::VK_LCONTROL));
+
+        // 2. A(10) 押下 -> layer_ctrl 有効化
+        let _ = KeyProcessor::process_key(10, true, &config);
+        let _ = KeyProcessor::process_key(999, true, &config); // 確定
+        assert!(get_state().lock().unwrap().active_layers.contains(&"layer_ctrl".to_string()));
+
+        // 送信履歴クリア
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+
+        // 3. A(10) を解放 (KeyUp)！ layer_ctrl が外れる
+        let _ = KeyProcessor::process_key(10, false, &config);
+
+        // ★ 検証: ユーザーは物理 Ctrl を押し続けているので、Ctrl Up は誤送信されないこと！
+        let sent = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        let ctrl_up_sent = sent.iter().any(|&(vk, is_up)| (vk == utils::VK_CONTROL || vk == utils::VK_LCONTROL || vk == utils::VK_RCONTROL) && is_up);
+        assert!(!ctrl_up_sent, "Ctrl Up must NOT be sent while plain physical Ctrl is held! Sent: {:?}", sent);
+
+        // クリーンアップ: 物理 Ctrl を離す
+        let _ = KeyProcessor::process_key(utils::VK_LCONTROL, false, &config);
+    }
+
+    #[test]
+    fn test_ghosting_right_shift_releases_right_shift_while_preserving_left_shift_of_other_layer() {
+        let _lock = state::TEST_LOCK.lock().unwrap();
+        let mut config = crate::get_default_config();
+        config.layers.clear();
+
+        // 1. base:
+        //    - 10 (A): Hold -> layer_a
+        //    - 50 (X): Hold -> layer_x
+        let mut base_bindings = std::collections::HashMap::new();
+        base_bindings.insert(10, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_a".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        base_bindings.insert(50, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_x".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "base".to_string(),
+            bindings: base_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // 2. layer_x: default_modifiers: { shift: true } (VK_LSHIFT を要求)
+        config.layers.push(crate::Layer {
+            id: "layer_x".to_string(),
+            bindings: std::collections::HashMap::new(),
+            default_modifiers: Some(serde_json::json!({"shift": true})),
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // 3. layer_a: RSHIFT(0xA1) -> Hold(layer_b)
+        let mut layer_a_bindings = std::collections::HashMap::new();
+        layer_a_bindings.insert(utils::VK_RSHIFT, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_b".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "layer_a".to_string(),
+            bindings: layer_a_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // 4. layer_b: passthrough_trigger_key: true
+        config.layers.push(crate::Layer {
+            id: "layer_b".to_string(),
+            bindings: std::collections::HashMap::new(),
+            default_modifiers: None,
+            passthrough_trigger_key: Some(true),
+            parent_layer_id: None,
+        });
+
+        // 状態初期化
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()];
+            state.key_states.clear();
+            state.momentary_layers.clear();
+            state.momentary_keys.clear();
+            state.ghost_keys.clear();
+            state.physically_pressed_modifiers.clear();
+            utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        }
+
+        // X(50) 押下 -> layer_x 有効化 (VK_LSHIFT Down 送信)
+        let _ = KeyProcessor::process_key(50, true, &config);
+        let _ = KeyProcessor::process_key(999, true, &config);
+        assert!(get_state().lock().unwrap().active_layers.contains(&"layer_x".to_string()));
+
+        // A(10) 押下 -> layer_a 有効化
+        let _ = KeyProcessor::process_key(10, true, &config);
+        let _ = KeyProcessor::process_key(998, true, &config);
+
+        // 右Shift(VK_RSHIFT 161) 押下 -> layer_b 有効化 (透過)
+        let _ = KeyProcessor::process_key(utils::VK_RSHIFT, true, &config);
+        let _ = KeyProcessor::process_key(997, true, &config);
+        assert!(matches!(
+            get_state().lock().unwrap().key_states.get(&utils::VK_RSHIFT),
+            Some(KeyState::PassthroughHoldActive { .. })
+        ));
+
+        // 送信履歴クリア
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+
+        // A(10) を解放 (KeyUp)！
+        // 右Shift はゴースト化される
+        let _ = KeyProcessor::process_key(10, false, &config);
+
+        // ★ 検証1: ゴースト化した VK_RSHIFT (161) の KeyUp が直ちに送信されていること！
+        let sent = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        let rshift_up_sent = sent.iter().any(|&(vk, is_up)| vk == utils::VK_RSHIFT && is_up);
+        assert!(rshift_up_sent, "VK_RSHIFT Up must be sent immediately when right shift is ghosted! Sent: {:?}", sent);
+
+        // ★ 検証2: 一方で layer_x が要求する VK_LSHIFT の KeyUp は送信されていないこと！
+        let lshift_up_sent = sent.iter().any(|&(vk, is_up)| (vk == utils::VK_LSHIFT || vk == utils::VK_SHIFT) && is_up);
+        assert!(!lshift_up_sent, "VK_LSHIFT Up must NOT be sent because layer_x still requires shift! Sent: {:?}", sent);
+
+        // 送信履歴クリア
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+
+        // 右Shift を物理リリース (ゴーストなので Block)
+        let up_action = KeyProcessor::process_key(utils::VK_RSHIFT, false, &config);
+        assert_eq!(up_action, HookAction::Block);
+
+        // X(50) を解放 (KeyUp)！
+        // layer_x が外れるため、ここで VK_LSHIFT Up が送信されること！
+        let _ = KeyProcessor::process_key(50, false, &config);
+        let sent_x = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        let final_lshift_up = sent_x.iter().any(|&(vk, is_up)| (vk == utils::VK_LSHIFT || vk == utils::VK_SHIFT) && is_up);
+        assert!(final_lshift_up, "VK_LSHIFT Up must be sent when layer_x is finally released! Sent: {:?}", sent_x);
+    }
+
+    #[test]
+    fn test_ghosting_right_shift_hands_over_to_active_layer_shift_modifier() {
+        let _lock = crate::key_processor::state::TEST_LOCK.lock().unwrap();
+
+        let mut config = crate::get_default_config();
+        config.layers.clear();
+
+        // 1. base:
+        //    - 10('A') -> Hold(layer_a)
+        //    - 50('X') -> Hold(layer_x)
+        let mut base_bindings = std::collections::HashMap::new();
+        base_bindings.insert(10, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_a".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        base_bindings.insert(50, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_x".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "base".to_string(),
+            bindings: base_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // 2. layer_x: defaultModifiers: { shift: true }
+        config.layers.push(crate::Layer {
+            id: "layer_x".to_string(),
+            bindings: std::collections::HashMap::new(),
+            default_modifiers: Some(serde_json::json!({"shift": true})),
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // 3. layer_a: RSHIFT(161) -> Hold(layer_b)
+        let mut layer_a_bindings = std::collections::HashMap::new();
+        layer_a_bindings.insert(utils::VK_RSHIFT, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "layer_b".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "layer_a".to_string(),
+            bindings: layer_a_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // 4. layer_b: passthrough_trigger_key: true
+        config.layers.push(crate::Layer {
+            id: "layer_b".to_string(),
+            bindings: std::collections::HashMap::new(),
+            default_modifiers: None,
+            passthrough_trigger_key: Some(true),
+            parent_layer_id: None,
+        });
+
+        // 状態初期化
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()];
+            state.key_states.clear();
+            state.momentary_layers.clear();
+            state.momentary_keys.clear();
+            state.ghost_keys.clear();
+            state.physically_pressed_modifiers.clear();
+            state.active_layer_modifiers.clear();
+            utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        }
+
+        // 1. A(10) 押下 -> layer_a 有効化
+        let _ = KeyProcessor::process_key(10, true, &config);
+        let _ = KeyProcessor::process_key(999, true, &config); // 確定
+
+        // 2. 右Shift(161) 押下 -> layer_b 有効化 (透過モーメンタリ)
+        let _ = KeyProcessor::process_key(utils::VK_RSHIFT, true, &config);
+        let _ = KeyProcessor::process_key(998, true, &config); // 確定
+        assert!(matches!(
+            get_state().lock().unwrap().key_states.get(&utils::VK_RSHIFT),
+            Some(KeyState::PassthroughHoldActive { .. })
+        ));
+
+        // 送信履歴クリア
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+
+        // 3. X(50) 押下 -> layer_x 有効化 (defaultModifiers: { shift: true })
+        // ★重要: 右Shiftが既に透過中なので、余計な VK_LSHIFT Down の二重送信が抑制されていること！
+        let _ = KeyProcessor::process_key(50, true, &config);
+        let _ = KeyProcessor::process_key(997, true, &config); // 確定
+        let sent_during_x = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        assert!(sent_during_x.is_empty(), "VK_LSHIFT Down should NOT be sent because VK_RSHIFT is already active! Sent: {:?}", sent_during_x);
+
+        // 送信履歴クリア
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+
+
+        // 4. A(10) を解放 (KeyUp)！
+        // layer_a が外れ、右Shift はゴースト化される。
+        let _ = KeyProcessor::process_key(10, false, &config);
+
+        // ★★★ コア検証 ★★★
+        // 1. ゴースト化した VK_RSHIFT (161) の Up が送信されていること！
+        // 2. layer_x (shift: true) が残っているため、VK_LSHIFT (160) Down が直ちに補填・引き継ぎ送信されていること！
+        let sent_during_a_rel = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        let rshift_up = sent_during_a_rel.iter().any(|&(vk, is_up)| vk == utils::VK_RSHIFT && is_up);
+        let lshift_down = sent_during_a_rel.iter().any(|&(vk, is_up)| vk == utils::VK_LSHIFT && !is_up);
+        assert!(rshift_up, "VK_RSHIFT Up must be sent when right shift is ghosted! Sent: {:?}", sent_during_a_rel);
+        assert!(lshift_down, "VK_LSHIFT Down must be sent to handover modifier output to layer_x! Sent: {:?}", sent_during_a_rel);
+        assert!(get_state().lock().unwrap().active_layer_modifiers.contains(&utils::VK_LSHIFT));
+
+        // 送信履歴クリア
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+
+        // 5. 右Shift を物理リリース (ゴーストなので Block)
+        let up_action = KeyProcessor::process_key(utils::VK_RSHIFT, false, &config);
+        assert_eq!(up_action, HookAction::Block);
+        let sent_during_rshift_rel = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        assert!(sent_during_rshift_rel.is_empty(), "No keys should be sent on ghost release! Sent: {:?}", sent_during_rshift_rel);
+
+        // 送信履歴クリア
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+
+        // 6. X(50) を解放 (KeyUp)！
+        // layer_x が外れるため、引き継がれていた VK_LSHIFT Up が送信されること！
+        let _ = KeyProcessor::process_key(50, false, &config);
+        let sent_during_x_rel = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        let final_lshift_up = sent_during_x_rel.iter().any(|&(vk, is_up)| (vk == utils::VK_LSHIFT || vk == utils::VK_SHIFT) && is_up);
+        assert!(final_lshift_up, "VK_LSHIFT Up must be sent when layer_x is finally released! Sent: {:?}", sent_during_x_rel);
+        assert!(get_state().lock().unwrap().active_layer_modifiers.is_empty());
     }
 }

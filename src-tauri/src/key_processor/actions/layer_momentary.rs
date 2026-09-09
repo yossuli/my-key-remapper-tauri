@@ -35,6 +35,10 @@ pub fn apply(physical_vk: u16, layer_id: &str, config: &Config) {
             state.active_layers.push(lid.clone());
         }
         state.momentary_layers.insert(physical_vk, layers_to_push);
+        if !state.momentary_keys.iter().any(|&(k, _)| k == physical_vk) {
+            state.momentary_keys.push((physical_vk, std::time::Instant::now()));
+        }
+        state.ghost_keys.remove(&physical_vk);
         (old_layers, state.active_layers.clone())
     };
 
