@@ -170,6 +170,9 @@ pub struct Layer {
     #[ts(optional)]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub passthrough_trigger_key: Option<bool>,
+    #[ts(optional)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_layer_id: Option<String>,
 }
 
 /// マクロ定義

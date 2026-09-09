@@ -1,5 +1,5 @@
 import { Reorder } from "framer-motion";
-import { Plus } from "lucide-react";
+import { Check, FolderTree, Plus, Settings, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/atoms/Button";
 import { Icon } from "@/components/atoms/Icon";
@@ -12,6 +12,10 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -78,29 +82,104 @@ export function LayerTabs({
             onReorder={layerActions.reorderLayers}
             values={orderedLayerIds}
           >
-            {orderedLayerIds.map((id) => (
-              <Reorder.Item as="div" key={id} value={id}>
-                <WithRemoveBadge onRemove={() => handleRemoveClick(id)}>
-                  <ContextMenu>
-                    <ContextMenuTrigger>
-                      <TabsTrigger
-                        className="data-[state=active]:bg-background"
-                        value={id}
-                      >
-                        {id.charAt(0).toUpperCase() + id.slice(1)}
-                      </TabsTrigger>
-                    </ContextMenuTrigger>
-                    <ContextMenuContent>
-                      <ContextMenuItem
-                        onSelect={() => setContextMenuLayerId(id)}
-                      >
-                        Layer Settings...
-                      </ContextMenuItem>
-                    </ContextMenuContent>
-                  </ContextMenu>
-                </WithRemoveBadge>
-              </Reorder.Item>
-            ))}
+            {orderedLayerIds.map((id) => {
+              const currentLayer = layerState.layers.find((l) => l.id === id);
+              const validParentCandidates = layerState.layers.filter((l) => {
+                if (l.id === id) return false;
+                let curr = l;
+                const visited = new Set<string>([l.id]);
+                while (curr.parentLayerId) {
+                  if (curr.parentLayerId === id) return false;
+                  if (visited.has(curr.parentLayerId)) break;
+                  visited.add(curr.parentLayerId);
+                  const next = layerState.layers.find((x) => x.id === curr.parentLayerId);
+                  if (!next) break;
+                  curr = next;
+                }
+                return true;
+              });
+
+              return (
+                <Reorder.Item as="div" key={id} value={id}>
+                  <WithRemoveBadge onRemove={() => handleRemoveClick(id)}>
+                    <ContextMenu>
+                      <ContextMenuTrigger>
+                        <TabsTrigger
+                          className="data-[state=active]:bg-background"
+                          value={id}
+                        >
+                          {id.charAt(0).toUpperCase() + id.slice(1)}
+                        </TabsTrigger>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent className="w-52">
+                        <ContextMenuItem
+                          className="flex items-center gap-2 cursor-pointer"
+                          onSelect={() => setContextMenuLayerId(id)}
+                        >
+                          <Settings className="h-4 w-4" />
+                          <span>レイヤー設定...</span>
+                        </ContextMenuItem>
+
+                        <ContextMenuSub>
+                          <ContextMenuSubTrigger className="flex items-center gap-2 cursor-pointer">
+                            <FolderTree className="h-4 w-4" />
+                            <span>親レイヤー (継承元)</span>
+                          </ContextMenuSubTrigger>
+                          <ContextMenuSubContent className="w-48">
+                            <ContextMenuItem
+                              className="flex items-center justify-between cursor-pointer"
+                              onSelect={() =>
+                                layerActions.updateLayer(id, {
+                                  parentLayerId: undefined,
+                                })
+                              }
+                            >
+                              <span>なし (None)</span>
+                              {!currentLayer?.parentLayerId && (
+                                <Check className="h-4 w-4 text-primary" />
+                              )}
+                            </ContextMenuItem>
+                            <ContextMenuSeparator />
+                            {validParentCandidates.map((parent) => (
+                              <ContextMenuItem
+                                className="flex items-center justify-between cursor-pointer"
+                                key={parent.id}
+                                onSelect={() =>
+                                  layerActions.updateLayer(id, {
+                                    parentLayerId: parent.id,
+                                  })
+                                }
+                              >
+                                <span>
+                                  {parent.id.charAt(0).toUpperCase() +
+                                    parent.id.slice(1)}
+                                </span>
+                                {currentLayer?.parentLayerId === parent.id && (
+                                  <Check className="h-4 w-4 text-primary" />
+                                )}
+                              </ContextMenuItem>
+                            ))}
+                          </ContextMenuSubContent>
+                        </ContextMenuSub>
+
+                        {id !== "base" && (
+                          <>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem
+                              className="flex items-center gap-2 cursor-pointer text-destructive focus:text-destructive"
+                              onSelect={() => handleRemoveClick(id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              <span>レイヤーを削除</span>
+                            </ContextMenuItem>
+                          </>
+                        )}
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  </WithRemoveBadge>
+                </Reorder.Item>
+              );
+            })}
           </Reorder.Group>
         </TabsList>
 

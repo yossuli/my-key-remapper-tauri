@@ -40,6 +40,11 @@ pub fn set_scroll_mode_state(active: bool, sensitivity: f64, invert: bool, axis:
     }
 }
 
+pub fn emit_layer_stack_changed(stack: &[String]) {
+    if let Some(app) = APP_HANDLE.get() {
+        let _ = app.emit("layer-stack-changed", serde_json::json!({ "stack": stack }));
+    }
+}
 
 pub fn setup_hook(app: AppHandle) {
     let _ = APP_HANDLE.set(app.clone());

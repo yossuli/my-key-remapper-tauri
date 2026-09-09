@@ -14,4 +14,6 @@ pub fn apply(layer_id: &str, config: &Config) {
         (old_layers, state.active_layers.clone())
     };
     apply_layer_modifiers(&old_layers, &new_layers, config);
+    #[cfg(windows)]
+    crate::hook::emit_layer_stack_changed(&new_layers);
 }

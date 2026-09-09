@@ -195,12 +195,18 @@ impl KeyProcessor {
             restore_suppressed_modifiers(&suppressed);
         }
 
-        if let Some(layer_id) = state.momentary_layers.remove(&vk) {
+        if let Some(pushed_layers) = state.momentary_layers.remove(&vk) {
             let old_layers = state.active_layers.clone();
-            state.active_layers.retain(|l| l != &layer_id);
+            for layer_to_remove in pushed_layers.iter().rev() {
+                if let Some(pos) = state.active_layers.iter().rposition(|l| l == layer_to_remove) {
+                    state.active_layers.remove(pos);
+                }
+            }
             let new_layers = state.active_layers.clone();
             drop(state);
             apply_layer_modifiers(&old_layers, &new_layers, config);
+            #[cfg(windows)]
+            crate::hook::emit_layer_stack_changed(&new_layers);
         }
     }
     fn get_interrupt_behavior(vk_code: u16, config: &Config, active_layers: &[String]) -> crate::state_machine::InterruptBehavior {
@@ -476,6 +482,7 @@ mod tests {
             passthrough_trigger_key: Some(true),
             default_modifiers: Some(serde_json::json!([160])),
             bindings: std::collections::HashMap::new(),
+            parent_layer_id: None,
         });
         config.layer_order.push("shift".to_string());
         config
@@ -594,6 +601,7 @@ mod tests {
             passthrough_trigger_key: Some(false),
             default_modifiers: None,
             bindings: std::collections::HashMap::new(),
+            parent_layer_id: None,
         });
         config.layer_order.push("num".to_string());
 

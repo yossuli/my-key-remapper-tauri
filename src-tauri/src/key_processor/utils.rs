@@ -251,19 +251,30 @@ pub fn reconcile_physical_keys() {
         return;
     }
 
-    let targets_to_up = {
+    let (targets_to_up, new_active_layers, layers_changed) = {
         let mut state = get_state().lock().unwrap();
         let mut targets = Vec::new();
+        let mut changed = false;
         for vk in released_physical_keys {
             if let Some(vks) = state.pressed_vks.remove(&vk) {
                 targets.extend(vks);
             }
-            if let Some(layer_id) = state.momentary_layers.remove(&vk) {
-                state.active_layers.retain(|l| l != &layer_id);
+            if let Some(pushed_layers) = state.momentary_layers.remove(&vk) {
+                for layer_to_remove in pushed_layers.iter().rev() {
+                    if let Some(pos) = state.active_layers.iter().rposition(|l| l == layer_to_remove) {
+                        state.active_layers.remove(pos);
+                        changed = true;
+                    }
+                }
             }
         }
-        targets
+        (targets, state.active_layers.clone(), changed)
     };
+
+    if layers_changed {
+        #[cfg(windows)]
+        crate::hook::emit_layer_stack_changed(&new_active_layers);
+    }
 
     for target in targets_to_up {
         send_key_raw(target, true);
@@ -353,7 +364,11 @@ pub fn suppress_active_modifiers_for_remap(
         for (&pt_vk, s) in &state.key_states {
             if matches!(s, crate::state_machine::KeyState::PassthroughHoldActive { .. }) && pt_vk != physical_vk {
                 let belongs = match source_layer {
-                    Some(src_layer) => state.momentary_layers.get(&pt_vk).map(|l| l.as_str()) == Some(src_layer),
+                    Some(src_layer) => state
+                        .momentary_layers
+                        .get(&pt_vk)
+                        .map(|layers| layers.iter().any(|l| l == src_layer))
+                        .unwrap_or(false),
                     None => true,
                 };
                 if belongs {
@@ -605,7 +620,7 @@ mod tests {
         {
             let mut state = get_state().lock().unwrap();
             state.active_layers = vec!["base".to_string(), "shift".to_string()];
-            state.momentary_layers.insert(160, "shift".to_string());
+            state.momentary_layers.insert(160, vec!["shift".to_string()]);
             state.key_states.insert(
                 160,
                 crate::state_machine::KeyState::PassthroughHoldActive {

@@ -5,4 +5,4 @@ import type { JsonValue } from "./serde_json/JsonValue";
 /**
  * レイヤー定義
  */
-export type Layer = { id: string, bindings: { [key in number]?: Array<Binding> }, defaultModifiers?: JsonValue, passthroughTriggerKey?: boolean, };
+export type Layer = { id: string, bindings: { [key in number]?: Array<Binding> }, defaultModifiers?: JsonValue, passthroughTriggerKey?: boolean, parentLayerId?: string, };

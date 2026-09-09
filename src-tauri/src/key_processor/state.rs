@@ -6,7 +6,7 @@ pub struct ProcessorState {
     pub key_states: HashMap<u16, KeyState>,
     pub active_layers: Vec<String>,
     pub pressed_vks: HashMap<u16, Vec<u16>>,
-    pub momentary_layers: HashMap<u16, String>,
+    pub momentary_layers: HashMap<u16, Vec<String>>,
     pub saved_mouse_pos: Option<(i32, i32)>,
     pub suppressed_modifiers_for_key: HashMap<u16, Vec<u16>>,
 }

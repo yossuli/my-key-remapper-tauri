@@ -36,10 +36,14 @@ export function useLayerStack(): UseLayerStackReturn {
   }, [refresh]);
 
   // レイヤー変更イベントを購読
-  useIpcEvent("layer-stack-changed", (...args: unknown[]) => {
-    const data = args[1] as { stack: string[] };
-    if (data?.stack) {
-      setStack(data.stack);
+  useIpcEvent("layer-stack-changed", (payload: unknown) => {
+    if (Array.isArray(payload)) {
+      setStack(payload);
+    } else if (payload && typeof payload === "object" && "stack" in payload) {
+      const data = payload as { stack: string[] };
+      if (Array.isArray(data.stack)) {
+        setStack(data.stack);
+      }
     }
   });
 

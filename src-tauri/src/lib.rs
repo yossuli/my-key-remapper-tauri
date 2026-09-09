@@ -59,12 +59,14 @@ pub fn get_default_config() -> Config {
                 ]),
                 default_modifiers: None,
                 passthrough_trigger_key: None,
+                parent_layer_id: None,
             },
             Layer {
                 id: "shift".to_string(),
                 bindings: HashMap::new(),
                 default_modifiers: Some(serde_json::json!({"shift": true})),
                 passthrough_trigger_key: Some(true),
+                parent_layer_id: None,
             },
         ],
         layer_order: vec!["base".to_string(), "shift".to_string()],
@@ -224,6 +226,7 @@ fn add_layer(layer_id: String, state: State<'_, ConfigState>) {
             bindings: HashMap::new(),
             default_modifiers: None,
             passthrough_trigger_key: None,
+            parent_layer_id: None,
         });
         config.layer_order.push(layer_id);
         save_current_config(&config, &state);
@@ -308,6 +311,18 @@ fn update_layer(layer_id: String, updates: Value, state: State<'_, ConfigState>)
         if let Some(passthrough) = updates.get("passthroughTriggerKey").and_then(|v| v.as_bool()) {
             layer.passthrough_trigger_key = Some(passthrough);
         }
+        if let Some(parent_val) = updates.get("parentLayerId") {
+            if parent_val.is_null() {
+                layer.parent_layer_id = None;
+            } else if let Some(parent_str) = parent_val.as_str() {
+                let trimmed = parent_str.trim();
+                if trimmed.is_empty() || trimmed == "__none__" {
+                    layer.parent_layer_id = None;
+                } else {
+                    layer.parent_layer_id = Some(trimmed.to_string());
+                }
+            }
+        }
         if let Some(new_id) = updates.get("id").and_then(|v| v.as_str()) {
             if new_id != layer_id {
                 layer.id = new_id.to_string();
@@ -321,6 +336,22 @@ fn update_layer(layer_id: String, updates: Value, state: State<'_, ConfigState>)
         save_current_config(&config, &state);
         state.config.store(Arc::new(config));
     }
+}
+
+#[tauri::command(rename = "reset-layer")]
+fn reset_layer(layer_id: String, state: State<'_, ConfigState>) {
+    log::info!("reset_layer: {}", layer_id);
+    let config = (**state.config.load()).clone();
+    let (old_layers, new_layers) = {
+        let mut p_state = crate::key_processor::state::get_state().lock().unwrap();
+        let old_layers = p_state.active_layers.clone();
+        p_state.active_layers = vec![layer_id];
+        p_state.momentary_layers.clear();
+        (old_layers, p_state.active_layers.clone())
+    };
+    crate::key_processor::utils::apply_layer_modifiers(&old_layers, &new_layers, &config);
+    #[cfg(windows)]
+    crate::hook::emit_layer_stack_changed(&new_layers);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -367,6 +398,7 @@ pub fn run() {
             remove_binding,
             move_key_mappings,
             update_layer,
+            reset_layer,
             profile::list_profiles,
             profile::load_profile,
             profile::copy_profile,
@@ -416,6 +448,7 @@ mod tests {
                 },
                 default_modifiers: None,
                 passthrough_trigger_key: None,
+                parent_layer_id: None,
             },
             Layer {
                 id: "fn".to_string(),
@@ -434,6 +467,7 @@ mod tests {
                 },
                 default_modifiers: None,
                 passthrough_trigger_key: None,
+                parent_layer_id: None,
             },
         ];
 

@@ -81,6 +81,8 @@ export interface Layer {
   inheritModifiers?: boolean;
   /** もともとのキー（レイヤーを発火させたトリガーキー）の長押しを無効化しない（OSに通す） */
   passthroughTriggerKey?: boolean;
+  /** 親レイヤー（未定義キーを継承するレイヤーID） */
+  parentLayerId?: string;
 }
 
 // =====================================

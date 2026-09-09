@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Select } from "@/components/atoms/Select";
 import { KeyRemapList } from "@/components/molecules/forms/KeyRemapList";
 import { VStack } from "@/components/template/Flex";
 import { ModalLayout } from "@/components/template/ModalLayout";
@@ -40,6 +41,25 @@ export function LayerSettingsModal({
 
   const [inheritModifiers, setInheritModifiers] = useState(true);
   const [passthroughTriggerKey, setPassthroughTriggerKey] = useState(false);
+  const [parentLayerId, setParentLayerId] = useState<string>("");
+
+  const parentCandidates = useMemo(() => {
+    if (!layerId) return [];
+    return layers.filter((l) => {
+      if (l.id === layerId) return false;
+      let curr = l;
+      const visited = new Set<string>([l.id]);
+      while (curr.parentLayerId) {
+        if (curr.parentLayerId === layerId) return false;
+        if (visited.has(curr.parentLayerId)) break;
+        visited.add(curr.parentLayerId);
+        const next = layers.find((x) => x.id === curr.parentLayerId);
+        if (!next) break;
+        curr = next;
+      }
+      return true;
+    });
+  }, [layers, layerId]);
 
   // 初期化
   useEffect(() => {
@@ -52,6 +72,7 @@ export function LayerSettingsModal({
       });
       setInheritModifiers(layer.inheritModifiers ?? true);
       setPassthroughTriggerKey(layer.passthroughTriggerKey ?? false);
+      setParentLayerId(layer.parentLayerId ?? "");
     }
   }, [layer]);
 
@@ -81,6 +102,12 @@ export function LayerSettingsModal({
     const newVal = !passthroughTriggerKey;
     setPassthroughTriggerKey(newVal);
     onUpdate(layerId, { passthroughTriggerKey: newVal });
+  };
+
+  const handleParentLayerChange = (value: string) => {
+    const newVal = value === "__none__" ? "" : value;
+    setParentLayerId(newVal);
+    onUpdate(layerId, { parentLayerId: newVal || undefined });
   };
 
   const handleUpdateActiveKeys = (newKeys: number[]) => {
@@ -144,8 +171,36 @@ export function LayerSettingsModal({
           </VStack>
 
           {/* Layer Inheritance Section */}
-          <VStack gap={2}>
+          <VStack gap={3}>
             <h3 className="font-semibold text-sm">Layer Inheritance</h3>
+
+            {/* Parent Layer Select */}
+            <VStack gap={2}>
+              <Label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="parent-layer-select"
+              >
+                親レイヤー (継承元)
+              </Label>
+              <Select
+                id="parent-layer-select"
+                label=""
+                onValueChange={handleParentLayerChange}
+                options={[
+                  { id: "__none__", value: "__none__", label: "なし (None)" },
+                  ...parentCandidates.map((l) => ({
+                    id: l.id,
+                    value: l.id,
+                    label: l.id.charAt(0).toUpperCase() + l.id.slice(1),
+                  })),
+                ]}
+                select-value={parentLayerId || "__none__"}
+              />
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                このレイヤーで未定義のキーは、親レイヤーのリマップ設定を自動的に引き継ぎます。
+              </p>
+            </VStack>
+
             <div className="flex items-center gap-2">
               <Checkbox
                 checked={inheritModifiers}

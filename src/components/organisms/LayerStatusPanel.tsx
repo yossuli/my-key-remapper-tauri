@@ -56,7 +56,7 @@ export function LayerStatusPanel({
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-muted-foreground"
                 }`}
-                key={layerId}
+                key={`${layerId}-${index}`}
               >
                 {layerId}
                 {index === stack.length - 1 && (
