@@ -30,16 +30,9 @@ impl ProcessorState {
     }
 }
 
-pub struct StateWrapper {
-    pub mutex: Mutex<ProcessorState>,
-    pub cvar: Condvar,
-}
-
-static STATE: OnceLock<StateWrapper> = OnceLock::new();
-
-pub fn get_state_wrapper() -> &'static StateWrapper {
-    STATE.get_or_init(|| StateWrapper {
-        mutex: Mutex::new(ProcessorState {
+impl Default for ProcessorState {
+    fn default() -> Self {
+        Self {
             key_states: HashMap::new(),
             active_layers: vec!["base".to_string()],
             pressed_vks: HashMap::new(),
@@ -50,7 +43,20 @@ pub fn get_state_wrapper() -> &'static StateWrapper {
             suppressed_modifiers_for_key: HashMap::new(),
             physically_pressed_modifiers: HashSet::new(),
             active_layer_modifiers: HashSet::new(),
-        }),
+        }
+    }
+}
+
+pub struct StateWrapper {
+    pub mutex: Mutex<ProcessorState>,
+    pub cvar: Condvar,
+}
+
+static STATE: OnceLock<StateWrapper> = OnceLock::new();
+
+pub fn get_state_wrapper() -> &'static StateWrapper {
+    STATE.get_or_init(|| StateWrapper {
+        mutex: Mutex::new(ProcessorState::default()),
         cvar: Condvar::new(),
     })
 }

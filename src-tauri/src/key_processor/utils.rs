@@ -428,99 +428,11 @@ pub fn compute_active_modifiers(active_layers: &[String], config: &Config) -> Ha
     out.into_iter().collect()
 }
 
-pub fn compute_desired_layer_modifiers(
-    state: &super::state::ProcessorState,
-    config: &Config,
-) -> HashSet<u16> {
-    let mut desired = HashSet::new();
-
-    let mut req_shift = false;
-    let mut req_ctrl = false;
-    let mut req_alt = false;
-    let mut req_win = false;
-
-    for layer_id in &state.active_layers {
-        let Some(layer) = config.layers.iter().find(|l| &l.id == layer_id) else { continue };
-        let Some(def_mods) = &layer.default_modifiers else { continue };
-
-        if def_mods.get("shift").and_then(|v| v.as_bool()).unwrap_or(false) {
-            req_shift = true;
-        }
-        if def_mods.get("ctrl").and_then(|v| v.as_bool()).unwrap_or(false) {
-            req_ctrl = true;
-        }
-        if def_mods.get("alt").and_then(|v| v.as_bool()).unwrap_or(false) {
-            req_alt = true;
-        }
-        if def_mods.get("win").and_then(|v| v.as_bool()).unwrap_or(false) {
-            req_win = true;
-        }
-    }
-
-    let has_passthrough_shift = state
-        .physically_pressed_modifiers
-        .iter()
-        .any(|&k| is_shift(k) && is_key_passed_through(k, state));
-    let has_passthrough_ctrl = state
-        .physically_pressed_modifiers
-        .iter()
-        .any(|&k| is_ctrl(k) && is_key_passed_through(k, state));
-    let has_passthrough_alt = state
-        .physically_pressed_modifiers
-        .iter()
-        .any(|&k| is_alt(k) && is_key_passed_through(k, state));
-    let has_passthrough_win = state
-        .physically_pressed_modifiers
-        .iter()
-        .any(|&k| is_win(k) && is_key_passed_through(k, state));
-
-    if req_shift {
-        if state.active_layer_modifiers.contains(&VK_LSHIFT) || !has_passthrough_shift {
-            desired.insert(VK_LSHIFT);
-        }
-    }
-    if req_ctrl {
-        if state.active_layer_modifiers.contains(&VK_LCONTROL) || !has_passthrough_ctrl {
-            desired.insert(VK_LCONTROL);
-        }
-    }
-    if req_alt {
-        if state.active_layer_modifiers.contains(&VK_LMENU) || !has_passthrough_alt {
-            desired.insert(VK_LMENU);
-        }
-    }
-    if req_win {
-        if state.active_layer_modifiers.contains(&VK_LWIN) || !has_passthrough_win {
-            desired.insert(VK_LWIN);
-        }
-    }
-
-    desired
-}
-
-pub fn reconcile_layer_modifiers(
-    state: &mut super::state::ProcessorState,
-    config: &Config,
-) {
-    let desired = compute_desired_layer_modifiers(state, config);
-
-    let to_release: Vec<u16> = state.active_layer_modifiers.difference(&desired).copied().collect();
-    let to_press: Vec<u16> = desired.difference(&state.active_layer_modifiers).copied().collect();
-
-    state.active_layer_modifiers = desired;
-
-    for vk in to_release {
-        send_key_raw(vk, true);
-    }
-    for vk in to_press {
-        send_key_raw(vk, false);
-    }
-}
-
-pub fn apply_layer_modifiers(_old_layers: &[String], _new_layers: &[String], config: &Config) {
-    let mut state = get_state().lock().unwrap();
-    reconcile_layer_modifiers(&mut state, config);
-}
+pub use super::reconciliation::{
+    compute_desired_layer_modifiers,
+    reconcile_layer_modifiers,
+    apply_layer_modifiers,
+};
 
 pub fn suppress_active_modifiers_for_remap(
     physical_vk: u16,
