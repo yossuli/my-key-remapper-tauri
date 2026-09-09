@@ -119,7 +119,16 @@ pub fn build_keybd_input(vk: u16, is_up: bool) -> KEYBDINPUT {
     }
 }
 
+#[cfg(test)]
+pub static TEST_SENT_KEYS: std::sync::Mutex<Vec<(u16, bool)>> = std::sync::Mutex::new(Vec::new());
+
 pub fn send_key_raw(vk: u16, is_up: bool) {
+    #[cfg(test)]
+    {
+        if let Ok(mut keys) = TEST_SENT_KEYS.lock() {
+            keys.push((vk, is_up));
+        }
+    }
     #[cfg(windows)]
     {
         let ki = build_keybd_input(vk, is_up);
@@ -168,8 +177,45 @@ pub fn send_key_down(physical_vk: u16, virtual_vk: u16) {
     send_key_raw(virtual_vk, false);
 }
 
-pub fn send_key_up(physical_vk: u16, virtual_vk: u16) {
+pub fn is_physical_key_down(vk: u16, state: &super::state::ProcessorState) -> bool {
+    if state.get_passthrough_trigger_keys().contains(&vk) {
+        return true;
+    }
+    #[cfg(windows)]
     {
+        let state_val = unsafe {
+            windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState(vk as i32)
+        };
+        (state_val as u16 & 0x8000) != 0
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
+pub fn is_modifier_physically_down(modifier: u16, state: &super::state::ProcessorState) -> bool {
+    let check_keys = match modifier {
+        VK_SHIFT | VK_LSHIFT | VK_RSHIFT => &[VK_SHIFT, VK_LSHIFT, VK_RSHIFT][..],
+        VK_CONTROL | VK_LCONTROL | VK_RCONTROL => &[VK_CONTROL, VK_LCONTROL, VK_RCONTROL][..],
+        VK_MENU | VK_LMENU | VK_RMENU => &[VK_MENU, VK_LMENU, VK_RMENU][..],
+        VK_LWIN | VK_RWIN => &[VK_LWIN, VK_RWIN][..],
+        _ => return is_physical_key_down(modifier, state),
+    };
+
+    check_keys.iter().any(|&k| is_physical_key_down(k, state))
+}
+
+pub fn is_modifier_active_in_context(modifier: u16, state: &super::state::ProcessorState, config: &Config) -> bool {
+    if is_modifier_physically_down(modifier, state) {
+        return true;
+    }
+    let current_mods = compute_active_modifiers(&state.active_layers, config);
+    is_modifier_subsumed(modifier, &current_mods.into_iter().collect::<Vec<_>>())
+}
+
+pub fn send_key_up(physical_vk: u16, virtual_vk: u16, config: &Config) {
+    let should_skip_raw_up = {
         let mut state = get_state().lock().unwrap();
         let is_empty = if let Some(vks) = state.pressed_vks.get_mut(&physical_vk) {
             vks.retain(|&v| v != virtual_vk);
@@ -180,8 +226,12 @@ pub fn send_key_up(physical_vk: u16, virtual_vk: u16) {
         if is_empty {
             state.pressed_vks.remove(&physical_vk);
         }
+        is_modifier(virtual_vk) && is_modifier_active_in_context(virtual_vk, &state, config)
+    };
+
+    if !should_skip_raw_up {
+        send_key_raw(virtual_vk, true);
     }
-    send_key_raw(virtual_vk, true);
 }
 
 pub fn release_all_virtual_keys() {
@@ -327,26 +377,17 @@ pub fn apply_layer_modifiers(old_layers: &[String], new_layers: &[String], confi
     let old_mods = compute_active_modifiers(old_layers, config);
     let new_mods = compute_active_modifiers(new_layers, config);
 
-    let passthrough_keys = {
-        let state = get_state().lock().unwrap();
-        state.get_passthrough_trigger_keys()
-    };
+    let state = get_state().lock().unwrap();
 
     for &modifier in new_mods.difference(&old_mods) {
-        let already_physically_down = match modifier {
-            VK_LSHIFT => passthrough_keys.contains(&160) || passthrough_keys.contains(&161),
-            VK_LCONTROL => passthrough_keys.contains(&162) || passthrough_keys.contains(&163),
-            VK_LMENU => passthrough_keys.contains(&164) || passthrough_keys.contains(&165),
-            VK_LWIN => passthrough_keys.contains(&91) || passthrough_keys.contains(&92),
-            _ => passthrough_keys.contains(&modifier),
-        };
-
-        if !already_physically_down {
+        if !is_modifier_physically_down(modifier, &state) {
             send_key_raw(modifier, false);
         }
     }
     for &modifier in old_mods.difference(&new_mods) {
-        send_key_raw(modifier, true);
+        if !is_modifier_physically_down(modifier, &state) {
+            send_key_raw(modifier, true);
+        }
     }
 }
 
@@ -541,7 +582,8 @@ mod tests {
             assert_eq!(state.pressed_vks.get(&physical), Some(&vec![virtual_k]));
         }
 
-        send_key_up(physical, virtual_k);
+        let config = crate::get_default_config();
+        send_key_up(physical, virtual_k, &config);
         {
             let state = get_state().lock().unwrap();
             // 空になったらキー自体が完全に削除されていること

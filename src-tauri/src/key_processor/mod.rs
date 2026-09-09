@@ -188,7 +188,9 @@ impl KeyProcessor {
         let mut state = get_state().lock().unwrap();
         let vks = state.pressed_vks.remove(&vk).unwrap_or_default();
         for target in vks {
-            send_key_raw(target, true);
+            if !(utils::is_modifier(target) && utils::is_modifier_active_in_context(target, &state, config)) {
+                send_key_raw(target, true);
+            }
         }
 
         if let Some(suppressed) = state.suppressed_modifiers_for_key.remove(&vk) {
@@ -639,5 +641,126 @@ mod tests {
             assert!(!state.key_states.contains_key(&29));
             assert!(!state.active_layers.contains(&"num".to_string()));
         }
+    }
+
+    #[test]
+    fn test_shift_held_through_momentary_layer_and_remap() {
+        let _lock = state::TEST_LOCK.lock().unwrap();
+        let mut config = crate::get_default_config();
+
+        // ユーザー設定の構成:
+        // - base: 160 -> Hold(shift) [forceHold]
+        // - shift: defaultModifiers: { shift: false }, passthroughTriggerKey: true
+        //          29 -> Hold(num_shift)
+        // - num_shift: defaultModifiers: { shift: true }
+        //              87 ('w') -> Tap(Remap [160, 50])
+        config.layers.clear();
+        config.layer_order = vec![
+            "base".to_string(),
+            "shift".to_string(),
+            "num_shift".to_string(),
+        ];
+
+        let mut base_bindings = std::collections::HashMap::new();
+        base_bindings.insert(160, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "shift".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "base".to_string(),
+            bindings: base_bindings,
+            default_modifiers: Some(serde_json::json!({"shift": false})),
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        let mut shift_bindings = std::collections::HashMap::new();
+        shift_bindings.insert(29, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "num_shift".to_string() },
+            timing_ms: None,
+            interrupt_behavior: None,
+        }]);
+        config.layers.push(crate::Layer {
+            id: "shift".to_string(),
+            bindings: shift_bindings,
+            default_modifiers: Some(serde_json::json!({"shift": false})),
+            passthrough_trigger_key: Some(true),
+            parent_layer_id: None,
+        });
+
+        let mut num_shift_bindings = std::collections::HashMap::new();
+        num_shift_bindings.insert(87, vec![crate::Binding {
+            trigger: Trigger::Tap,
+            action: Action::Remap {
+                keys: vec![160, 50],
+                repeat: Some(false),
+                repeat_delay_ms: None,
+                repeat_interval_ms: None,
+            },
+            timing_ms: None,
+            interrupt_behavior: None,
+        }]);
+        config.layers.push(crate::Layer {
+            id: "num_shift".to_string(),
+            bindings: num_shift_bindings,
+            default_modifiers: Some(serde_json::json!({"shift": true})),
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // 状態初期化
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()];
+            state.key_states.clear();
+            state.momentary_layers.clear();
+            state.pressed_vks.clear();
+            state.suppressed_modifiers_for_key.clear();
+            utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        }
+
+        // 1. Shift (160) 押下 (passthroughTriggerKey: true なので PassThrough)
+        let a1 = KeyProcessor::process_key(160, true, &config);
+        assert_eq!(a1, HookAction::PassThrough);
+
+        // 2. 'a' (65) 押下 & リリース
+        let a2 = KeyProcessor::process_key(65, true, &config);
+        assert_eq!(a2, HookAction::PassThrough);
+        let a3 = KeyProcessor::process_key(65, false, &config);
+        assert_eq!(a3, HookAction::PassThrough);
+
+        // 3. Shift を押したまま 無変換 (29) 押下
+        let a4 = KeyProcessor::process_key(29, true, &config);
+        assert_eq!(a4, HookAction::Block);
+
+        // 送信履歴をクリア
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+
+        // 4. 'w' (87) 押下 & リリース
+        let a5 = KeyProcessor::process_key(87, true, &config);
+        assert_eq!(a5, HookAction::Block);
+        let a6 = KeyProcessor::process_key(87, false, &config);
+        assert_eq!(a6, HookAction::Block);
+
+        // 5. 無変換 (29) リリース
+        let a7 = KeyProcessor::process_key(29, false, &config);
+        assert_eq!(a7, HookAction::Block);
+
+        // ★ 検証: 'w' 入力〜無変換リリースまでの間に、160 の KeyUp が送信されていないこと！
+        let sent_keys = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        let shift_up_count = sent_keys.iter().filter(|&&(vk, is_up)| (vk == 160 || vk == 16) && is_up).count();
+        assert_eq!(shift_up_count, 0, "Shift KeyUp should NOT be sent while Shift is physically held! Sent: {:?}", sent_keys);
+
+        // 6. 's' (83) 押下 -> PassThrough
+        let a8 = KeyProcessor::process_key(83, true, &config);
+        assert_eq!(a8, HookAction::PassThrough);
+
+        // 7. 最後に Shift (160) をリリース
+        let a9 = KeyProcessor::process_key(160, false, &config);
+        // passthrough なので PassThrough で OS に KeyUp が届く
+        assert_eq!(a9, HookAction::PassThrough);
     }
 }

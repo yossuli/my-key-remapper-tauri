@@ -66,7 +66,7 @@ pub fn apply(
     match determine_release_policy(is_atomic, repeat, has_non_modifier, !suppressed.is_empty()) {
         RemapReleasePolicy::ImmediateRelease => {
             for &target_vk in target_vks.iter().rev() {
-                send_key_up(physical_vk, target_vk);
+                send_key_up(physical_vk, target_vk, config);
             }
             restore_suppressed_modifiers(&suppressed);
         }
@@ -79,11 +79,11 @@ pub fn apply(
 }
 
 /// リマップアクションのリピート実行 (修飾キー以外のキーをアトミックに再押下・解放)
-pub fn repeat(physical_vk: u16, keys: &[u16]) {
+pub fn repeat(_physical_vk: u16, keys: &[u16]) {
     for &target_vk in keys {
         if !is_modifier(target_vk) {
-            send_key_down(physical_vk, target_vk);
-            send_key_up(physical_vk, target_vk);
+            crate::key_processor::utils::send_key_raw(target_vk, false);
+            crate::key_processor::utils::send_key_raw(target_vk, true);
         }
     }
 }
