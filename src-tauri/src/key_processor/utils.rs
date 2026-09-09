@@ -413,7 +413,7 @@ where
         let Some(def_mods) = &layer.default_modifiers else { continue };
 
         for (name, vk) in mod_mappings {
-            if def_mods.get(name).and_then(|v| v.as_bool()).unwrap_or(false) {
+            if def_mods.is_enabled(name) {
                 if !out.contains(&vk) {
                     out.push(vk);
                 }

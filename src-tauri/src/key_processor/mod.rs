@@ -513,7 +513,7 @@ mod tests {
         config.layers.push(crate::Layer {
             id: "shift".to_string(),
             passthrough_trigger_key: Some(true),
-            default_modifiers: Some(serde_json::json!([160])),
+            default_modifiers: Some(crate::model::ModifierOutput::new().with_shift(true)),
             bindings: std::collections::HashMap::new(),
             parent_layer_id: None,
         });
@@ -702,7 +702,7 @@ mod tests {
         config.layers.push(crate::Layer {
             id: "base".to_string(),
             bindings: base_bindings,
-            default_modifiers: Some(serde_json::json!({"shift": false})),
+            default_modifiers: Some(crate::model::ModifierOutput::new().with_shift(false)),
             passthrough_trigger_key: None,
             parent_layer_id: None,
         });
@@ -717,7 +717,7 @@ mod tests {
         config.layers.push(crate::Layer {
             id: "shift".to_string(),
             bindings: shift_bindings,
-            default_modifiers: Some(serde_json::json!({"shift": false})),
+            default_modifiers: Some(crate::model::ModifierOutput::new().with_shift(false)),
             passthrough_trigger_key: Some(true),
             parent_layer_id: None,
         });
@@ -737,7 +737,7 @@ mod tests {
         config.layers.push(crate::Layer {
             id: "num_shift".to_string(),
             bindings: num_shift_bindings,
-            default_modifiers: Some(serde_json::json!({"shift": true})),
+            default_modifiers: Some(crate::model::ModifierOutput::new().with_shift(true)),
             passthrough_trigger_key: None,
             parent_layer_id: None,
         });
@@ -931,7 +931,7 @@ mod tests {
         config.layers.push(crate::Layer {
             id: "num_shift".to_string(),
             bindings: num_shift_bindings,
-            default_modifiers: Some(serde_json::json!({"shift": true})),
+            default_modifiers: Some(crate::model::ModifierOutput::new().with_shift(true)),
             passthrough_trigger_key: None,
             parent_layer_id: Some("num".to_string()),
         });
@@ -1116,7 +1116,7 @@ mod tests {
         config.layers.push(crate::Layer {
             id: "shift".to_string(),
             bindings: shift_bindings,
-            default_modifiers: Some(serde_json::json!({"shift": false})),
+            default_modifiers: Some(crate::model::ModifierOutput::new().with_shift(false)),
             passthrough_trigger_key: Some(true),
             parent_layer_id: None,
         });
@@ -1125,7 +1125,7 @@ mod tests {
         config.layers.push(crate::Layer {
             id: "num_shift".to_string(),
             bindings: std::collections::HashMap::new(),
-            default_modifiers: Some(serde_json::json!({"shift": true})),
+            default_modifiers: Some(crate::model::ModifierOutput::new().with_shift(true)),
             passthrough_trigger_key: None,
             parent_layer_id: Some("num".to_string()),
         });
@@ -1574,7 +1574,7 @@ mod tests {
         config.layers.push(crate::Layer {
             id: "layer_x".to_string(),
             bindings: std::collections::HashMap::new(),
-            default_modifiers: Some(serde_json::json!({"shift": true})),
+            default_modifiers: Some(crate::model::ModifierOutput::new().with_shift(true)),
             passthrough_trigger_key: None,
             parent_layer_id: None,
         });
@@ -1889,7 +1889,7 @@ mod tests {
         config.layers.push(crate::Layer {
             id: "layer_ctrl".to_string(),
             bindings: std::collections::HashMap::new(),
-            default_modifiers: Some(serde_json::json!({"ctrl": true})),
+            default_modifiers: Some(crate::model::ModifierOutput::new().with_ctrl(true)),
             passthrough_trigger_key: None,
             parent_layer_id: None,
         });
@@ -1965,7 +1965,7 @@ mod tests {
         config.layers.push(crate::Layer {
             id: "layer_x".to_string(),
             bindings: std::collections::HashMap::new(),
-            default_modifiers: Some(serde_json::json!({"shift": true})),
+            default_modifiers: Some(crate::model::ModifierOutput::new().with_shift(true)),
             passthrough_trigger_key: None,
             parent_layer_id: None,
         });
@@ -2090,7 +2090,7 @@ mod tests {
         config.layers.push(crate::Layer {
             id: "layer_x".to_string(),
             bindings: std::collections::HashMap::new(),
-            default_modifiers: Some(serde_json::json!({"shift": true})),
+            default_modifiers: Some(crate::model::ModifierOutput::new().with_shift(true)),
             passthrough_trigger_key: None,
             parent_layer_id: None,
         });
@@ -2370,7 +2370,7 @@ mod tests {
         config.layers.push(crate::Layer {
             id: "layer_shift".to_string(),
             bindings: std::collections::HashMap::new(),
-            default_modifiers: Some(serde_json::json!({"shift": true})),
+            default_modifiers: Some(crate::model::ModifierOutput::new().with_shift(true)),
             passthrough_trigger_key: None,
             parent_layer_id: None,
         });
@@ -2722,7 +2722,7 @@ mod tests {
         config.layers.push(crate::Layer {
             id: "layer_ctrl_shift".to_string(),
             bindings: std::collections::HashMap::new(),
-            default_modifiers: Some(serde_json::json!({"ctrl": true, "shift": true})),
+            default_modifiers: Some(crate::model::ModifierOutput::new().with_ctrl(true).with_shift(true)),
             passthrough_trigger_key: None,
             parent_layer_id: None,
         });
@@ -2731,7 +2731,7 @@ mod tests {
         config.layers.push(crate::Layer {
             id: "layer_shift_alt".to_string(),
             bindings: std::collections::HashMap::new(),
-            default_modifiers: Some(serde_json::json!({"shift": true, "alt": true})),
+            default_modifiers: Some(crate::model::ModifierOutput::new().with_shift(true).with_alt(true)),
             passthrough_trigger_key: None,
             parent_layer_id: None,
         });

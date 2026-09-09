@@ -7,4 +7,5 @@ export * from "./MacroDef";
 export * from "./MouseButton";
 export * from "./ScrollAxis";
 export * from "./Trigger";
+export * from "./ModifierOutput";
 export * from "./serde_json/JsonValue";

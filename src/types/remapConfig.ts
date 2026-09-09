@@ -2,7 +2,9 @@ import type {
   Action as GeneratedAction,
   Binding as GeneratedBinding,
   InterruptBehavior as GeneratedInterruptBehavior,
+  Layer as GeneratedLayer,
   MacroDef as GeneratedMacroDef,
+  ModifierOutput as GeneratedModifierOutput,
   MouseButton as GeneratedMouseButton,
   ScrollAxis as GeneratedScrollAxis,
   Trigger as GeneratedTrigger,
@@ -19,18 +21,10 @@ export type ScrollAxis = GeneratedScrollAxis;
 export type InterruptBehavior = GeneratedInterruptBehavior;
 
 // =====================================
-// 修飾キー
+// 修飾キー (Rust自動同期)
 // =====================================
 
-/**
- * 修飾キーの出力指定
- */
-export interface ModifierOutput {
-  ctrl?: boolean | "left" | "right";
-  shift?: boolean | "left" | "right";
-  alt?: boolean | "left" | "right";
-  win?: boolean | "left" | "right";
-}
+export type ModifierOutput = GeneratedModifierOutput;
 
 // =====================================
 // アクション (Rust自動同期)
@@ -64,26 +58,13 @@ export type KeyBinding = GeneratedBinding;
 export type Binding = GeneratedBinding;
 
 // =====================================
-// レイヤー
+// レイヤー (Rust自動同期)
 // =====================================
-/** レイヤー定義 */
-export interface Layer {
-  id: string;
-  /** キーコード → バインディング配列 */
+
+/** レイヤー定義 (Rust側 Layer モデルと完全同期 + FE用 bindings 型付け) */
+export type Layer = Omit<GeneratedLayer, "bindings"> & {
   bindings: Record<number, KeyBinding[]>;
-  /** "layerMomentary"で有効にしている場合、ほかのキーを押したときにこのキーを送信する（未実装）*/
-  // passThroughKeys?: number[];
-  /** レイヤーアクティブ時にデフォルトで送信する修飾キー。tap アクションが設定されているキーは除外。*/
-  defaultModifiers?: ModifierOutput;
-  /** レイヤーアクティブ時に押しっぱなしにする追加キー（任意のキーコード） */
-  activeKeys?: number[];
-  /** 下位レイヤーの defaultModifiers と activeKeys を継承して合成するかどうか（デフォルト true） */
-  inheritModifiers?: boolean;
-  /** もともとのキー（レイヤーを発火させたトリガーキー）の長押しを無効化しない（OSに通す） */
-  passthroughTriggerKey?: boolean;
-  /** 親レイヤー（未定義キーを継承するレイヤーID） */
-  parentLayerId?: string;
-}
+};
 
 // =====================================
 // 設定全体

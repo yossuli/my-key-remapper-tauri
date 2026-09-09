@@ -1,14 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Select } from "@/components/atoms/Select";
-import { KeyRemapList } from "@/components/molecules/forms/KeyRemapList";
 import { VStack } from "@/components/template/Flex";
 import { ModalLayout } from "@/components/template/ModalLayout";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import type { LayoutType } from "@/types";
@@ -17,7 +10,7 @@ import type { Layer } from "@/types/remapConfig";
 interface LayerSettingsModalProps {
   layerId: string | null;
   layers: Layer[];
-  layout: LayoutType;
+  layout?: LayoutType;
   onUpdate: (layerId: string, updates: Partial<Layer>) => void;
   onClose: () => void;
 }
@@ -25,12 +18,10 @@ interface LayerSettingsModalProps {
 export function LayerSettingsModal({
   layerId,
   layers,
-  layout,
   onUpdate,
   onClose,
 }: LayerSettingsModalProps) {
   const layer = layers.find((l) => l.id === layerId);
-  const [isActiveKeysOpen, setIsActiveKeysOpen] = useState(false);
 
   const [modifiers, setModifiers] = useState({
     shift: false,
@@ -39,7 +30,6 @@ export function LayerSettingsModal({
     win: false,
   });
 
-  const [inheritModifiers, setInheritModifiers] = useState(true);
   const [passthroughTriggerKey, setPassthroughTriggerKey] = useState(false);
   const [parentLayerId, setParentLayerId] = useState<string>("");
 
@@ -70,7 +60,6 @@ export function LayerSettingsModal({
         alt: !!layer.defaultModifiers?.alt,
         win: !!layer.defaultModifiers?.win,
       });
-      setInheritModifiers(layer.inheritModifiers ?? true);
       setPassthroughTriggerKey(layer.passthroughTriggerKey ?? false);
       setParentLayerId(layer.parentLayerId ?? "");
     }
@@ -92,12 +81,6 @@ export function LayerSettingsModal({
     });
   };
 
-  const toggleInheritModifiers = () => {
-    const newVal = !inheritModifiers;
-    setInheritModifiers(newVal);
-    onUpdate(layerId, { inheritModifiers: newVal });
-  };
-
   const togglePassthroughTriggerKey = () => {
     const newVal = !passthroughTriggerKey;
     setPassthroughTriggerKey(newVal);
@@ -108,12 +91,6 @@ export function LayerSettingsModal({
     const newVal = value === "__none__" ? "" : value;
     setParentLayerId(newVal);
     onUpdate(layerId, { parentLayerId: newVal || undefined });
-  };
-
-  const handleUpdateActiveKeys = (newKeys: number[]) => {
-    if (layerId) {
-      onUpdate(layerId, { activeKeys: newKeys });
-    }
   };
 
   return (
@@ -200,45 +177,7 @@ export function LayerSettingsModal({
                 このレイヤーで未定義のキーは、親レイヤーのリマップ設定を自動的に引き継ぎます。
               </p>
             </VStack>
-
-            <div className="flex items-center gap-2">
-              <Checkbox
-                checked={inheritModifiers}
-                id="inherit-modifiers"
-                onCheckedChange={toggleInheritModifiers}
-              />
-              <Label className="cursor-pointer" htmlFor="inherit-modifiers">
-                下のレイヤーの設定を引き継ぐ (Inherit from lower layers)
-              </Label>
-            </div>
-            <p className="text-muted-foreground text-xs">
-              OFF
-              にすると、このレイヤーより下位のレイヤーの修飾キーと追加キーが無視されます
-            </p>
           </VStack>
-
-          {/* Active Keys Section */}
-          <Accordion
-            collapsible
-            onValueChange={(val) => setIsActiveKeysOpen(val === "active-keys")}
-            type="single"
-          >
-            <AccordionItem className="border-none" value="active-keys">
-              <AccordionTrigger className="py-2 font-semibold text-sm hover:no-underline">
-                Active Keys (Held)
-              </AccordionTrigger>
-              <AccordionContent>
-                <KeyRemapList
-                  initialKeys={layer.activeKeys ?? []}
-                  isCaptureEnabled={isActiveKeysOpen}
-                  layout={layout}
-                  onClear={() => handleUpdateActiveKeys([])}
-                  onKeysChange={handleUpdateActiveKeys}
-                  requireExplicitAdd
-                />
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
         </VStack>
       )}
     </ModalLayout>

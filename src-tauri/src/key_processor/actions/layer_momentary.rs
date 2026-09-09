@@ -51,24 +51,18 @@ pub fn apply(physical_vk: u16, layer_id: &str, config: &Config) {
 mod tests {
     use super::*;
     use crate::model::Layer;
-    use std::collections::HashMap;
 
     #[test]
     fn test_get_layer_hierarchy_single_and_chain() {
         let mut config = crate::get_default_config();
         config.layers.push(Layer {
             id: "num".to_string(),
-            bindings: HashMap::new(),
-            default_modifiers: None,
-            passthrough_trigger_key: None,
-            parent_layer_id: None,
+            ..Default::default()
         });
         config.layers.push(Layer {
             id: "num_shift".to_string(),
-            bindings: HashMap::new(),
-            default_modifiers: None,
-            passthrough_trigger_key: None,
             parent_layer_id: Some("num".to_string()),
+            ..Default::default()
         });
 
         // single
@@ -86,17 +80,13 @@ mod tests {
         let mut config = crate::get_default_config();
         config.layers.push(Layer {
             id: "a".to_string(),
-            bindings: HashMap::new(),
-            default_modifiers: None,
-            passthrough_trigger_key: None,
             parent_layer_id: Some("b".to_string()),
+            ..Default::default()
         });
         config.layers.push(Layer {
             id: "b".to_string(),
-            bindings: HashMap::new(),
-            default_modifiers: None,
-            passthrough_trigger_key: None,
             parent_layer_id: Some("a".to_string()),
+            ..Default::default()
         });
 
         // Cycle should terminate safely without infinite loop

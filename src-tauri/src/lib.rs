@@ -64,7 +64,7 @@ pub fn get_default_config() -> Config {
             Layer {
                 id: "shift".to_string(),
                 bindings: HashMap::new(),
-                default_modifiers: Some(serde_json::json!({"shift": true})),
+                default_modifiers: Some(ModifierOutput::new().with_shift(true)),
                 passthrough_trigger_key: Some(true),
                 parent_layer_id: None,
             },
@@ -306,7 +306,9 @@ fn update_layer(layer_id: String, updates: Value, state: State<'_, ConfigState>)
     let mut config = (**state.config.load()).clone();
     if let Some(layer) = config.layers.iter_mut().find(|l| l.id == layer_id) {
         if let Some(default_modifiers) = updates.get("defaultModifiers") {
-            layer.default_modifiers = Some(default_modifiers.clone());
+            if let Ok(mods) = serde_json::from_value::<ModifierOutput>(default_modifiers.clone()) {
+                layer.default_modifiers = Some(mods);
+            }
         }
         if let Some(passthrough) = updates.get("passthroughTriggerKey").and_then(|v| v.as_bool()) {
             layer.passthrough_trigger_key = Some(passthrough);
@@ -446,9 +448,7 @@ mod tests {
                     );
                     map
                 },
-                default_modifiers: None,
-                passthrough_trigger_key: None,
-                parent_layer_id: None,
+                ..Default::default()
             },
             Layer {
                 id: "fn".to_string(),
@@ -465,9 +465,7 @@ mod tests {
                     );
                     map
                 },
-                default_modifiers: None,
-                passthrough_trigger_key: None,
-                parent_layer_id: None,
+                ..Default::default()
             },
         ];
 

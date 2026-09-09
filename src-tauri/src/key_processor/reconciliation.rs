@@ -81,7 +81,7 @@ pub fn compute_desired_layer_modifiers(
         for layer_id in &state.active_layers {
             let Some(layer) = config.layers.iter().find(|l| &l.id == layer_id) else { continue };
             let Some(def_mods) = &layer.default_modifiers else { continue };
-            if def_mods.get(def.name).and_then(|v| v.as_bool()).unwrap_or(false) {
+            if def_mods.is_enabled(def.name) {
                 required = true;
                 break;
             }
@@ -282,15 +282,14 @@ mod tests {
         // layer_mods: shift, ctrl, alt, win を要求
         config.layers.push(crate::Layer {
             id: "layer_all_mods".to_string(),
-            bindings: std::collections::HashMap::new(),
-            default_modifiers: Some(serde_json::json!({
-                "shift": true,
-                "ctrl": true,
-                "alt": true,
-                "win": true
-            })),
-            passthrough_trigger_key: None,
-            parent_layer_id: None,
+            default_modifiers: Some(
+                crate::model::ModifierOutput::new()
+                    .with_shift(true)
+                    .with_ctrl(true)
+                    .with_alt(true)
+                    .with_win(true),
+            ),
+            ..Default::default()
         });
 
         let mut state = ProcessorState::default();

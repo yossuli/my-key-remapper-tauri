@@ -156,8 +156,63 @@ pub struct Binding {
     pub interrupt_behavior: Option<InterruptBehavior>,
 }
 
+/// レイヤーアクティブ時にデフォルトで送信する修飾キー
+#[derive(TS, Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct ModifierOutput {
+    #[ts(optional)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ctrl: Option<bool>,
+    #[ts(optional)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shift: Option<bool>,
+    #[ts(optional)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alt: Option<bool>,
+    #[ts(optional)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub win: Option<bool>,
+}
+
+impl ModifierOutput {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_shift(mut self, val: bool) -> Self {
+        self.shift = Some(val);
+        self
+    }
+
+    pub fn with_ctrl(mut self, val: bool) -> Self {
+        self.ctrl = Some(val);
+        self
+    }
+
+    pub fn with_alt(mut self, val: bool) -> Self {
+        self.alt = Some(val);
+        self
+    }
+
+    pub fn with_win(mut self, val: bool) -> Self {
+        self.win = Some(val);
+        self
+    }
+
+    pub fn is_enabled(&self, name: &str) -> bool {
+        match name {
+            "shift" => self.shift.unwrap_or(false),
+            "ctrl" => self.ctrl.unwrap_or(false),
+            "alt" => self.alt.unwrap_or(false),
+            "win" => self.win.unwrap_or(false),
+            _ => false,
+        }
+    }
+}
+
 /// レイヤー定義
-#[derive(TS, Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(TS, Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct Layer {
@@ -166,7 +221,7 @@ pub struct Layer {
     pub bindings: HashMap<u16, Vec<Binding>>,
     #[ts(optional)]
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub default_modifiers: Option<Value>,
+    pub default_modifiers: Option<ModifierOutput>,
     #[ts(optional)]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub passthrough_trigger_key: Option<bool>,
