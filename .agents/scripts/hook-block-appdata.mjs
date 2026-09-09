@@ -14,14 +14,52 @@ process.stdin.on("end", () => {
     const toolCall = payload.toolCall;
 
     if (toolCall && toolCall.args) {
-      // 引数に含まれる文字列全体を再帰的にチェック
-      const hasDirectAppDataAccess = checkValuesForDirectAppData(toolCall.args);
+      const toolName = toolCall.name || "";
+
+      // 1. 対象となるファイルパスまたはコマンド文字列を取得
+      const targetPaths = extractTargetPaths(toolName, toolCall.args);
+
+      // 2. read ツール（view_file, list_dir 等）でシンボリックリンク先を読もうとした場合
+      // シンボリックリンク先は実パスがワークスペース外となるためブロックし、ls や jq の使用を促す
+      const hasSymlinkAccess = targetPaths.some((p) =>
+        p.toLowerCase().includes("appdata-link")
+      );
+
+      if (hasSymlinkAccess && isReadTool(toolName)) {
+        const response = {
+          decision: "deny",
+          reason: `【アクセス拒否】シンボリックリンク経由の read ツール（${toolName}）はワークスペース外アクセスとしてブロックされます。'appdata-link/profiles' に対して run_command で ls や jq 等のシェルコマンドを用いて参照してください。`,
+        };
+        process.stdout.write(JSON.stringify(response) + "\n");
+        process.exit(0);
+      }
+
+      // ファイル書き込み系ツールでシンボリックリンク自体やリンク先を変更しようとした場合もブロック
+      if (hasSymlinkAccess && isWriteTool(toolName)) {
+        const response = {
+          decision: "deny",
+          reason: `【アクセス拒否】シンボリックリンク経由のファイル変更ツール（${toolName}）はワークスペース外アクセスとしてブロックされます。`,
+        };
+        process.stdout.write(JSON.stringify(response) + "\n");
+        process.exit(0);
+      }
+
+      // 3. AppData への直接アクセス（appdata-link を介さない直接パス）をチェック
+      // コマンドラインやファイルパスを検査する（ファイル内容そのものは誤検知防止のため除外）
+      const pathsToCheck =
+        toolName === "run_command"
+          ? [toolCall.args.CommandLine || ""]
+          : targetPaths;
+
+      const hasDirectAppDataAccess = pathsToCheck.some((p) =>
+        isDirectAppData(p)
+      );
 
       if (hasDirectAppDataAccess) {
         const response = {
           decision: "deny",
           reason:
-            "【アクセス拒否】Windows の AppData ディレクトリ（my-key-remapper）への直接アクセスはブロックされました。ワークスペース直下のシンボリックリンク 'appdata-link' 経由でアクセスしてください。",
+            "【アクセス拒否】Windows の AppData ディレクトリ（my-key-remapper）への直接アクセスはブロックされました。'appdata-link/profiles' に対して run_command で ls や jq を実行してください。",
         };
         process.stdout.write(JSON.stringify(response) + "\n");
         process.exit(0);
@@ -36,38 +74,90 @@ process.stdin.on("end", () => {
   process.exit(0);
 });
 
+const READ_TOOLS = new Set([
+  "view_file",
+  "read_file",
+  "list_dir",
+  "grep_search",
+  "find_by_name",
+  "read_resource",
+  "read_url_content",
+]);
+
+function isReadTool(toolName) {
+  if (READ_TOOLS.has(toolName)) return true;
+  if (
+    toolName.startsWith("read_") ||
+    toolName.startsWith("view_") ||
+    toolName.startsWith("list_")
+  ) {
+    return true;
+  }
+  return false;
+}
+
+const WRITE_TOOLS = new Set([
+  "write_to_file",
+  "replace_file_content",
+  "edit_file",
+]);
+
+function isWriteTool(toolName) {
+  return WRITE_TOOLS.has(toolName);
+}
+
 /**
- * オブジェクト内のすべての文字列値を検査し、
+ * ツール呼び出しから対象となるパス文字列を抽出する
+ * （CodeContent や TargetContent などのファイル中身は検査対象外とする）
+ */
+function extractTargetPaths(toolName, args) {
+  if (!args || typeof args !== "object") return [];
+
+  const paths = [];
+
+  // run_command の場合は CommandLine 全体を対象とする
+  if (toolName === "run_command" && typeof args.CommandLine === "string") {
+    paths.push(args.CommandLine);
+  }
+
+  // ファイル・ディレクトリアクセス関連の主なプロパティ
+  const pathKeys = [
+    "AbsolutePath",
+    "DirectoryPath",
+    "SearchPath",
+    "SearchDirectory",
+    "TargetFile",
+    "path",
+    "filePath",
+    "dirPath",
+    "Uri",
+  ];
+
+  for (const key of pathKeys) {
+    if (typeof args[key] === "string") {
+      paths.push(args[key]);
+    }
+  }
+
+  return paths;
+}
+
+/**
  * appdata-link を経由しない AppData/Roaming/my-key-remapper への直接アクセスが含まれているかを判定する
  */
-function checkValuesForDirectAppData(obj) {
-  if (!obj) return false;
+function isDirectAppData(str) {
+  if (typeof str !== "string") return false;
 
-  if (typeof obj === "string") {
-    // appdata-link 経由の場合は許可
-    if (obj.includes("appdata-link")) {
-      return false;
-    }
-
-    // AppData/Roaming/my-key-remapper への直接アクセスを検出
-    const normalized = obj.replace(/\\/g, "/").toLowerCase();
-    if (
-      normalized.includes("appdata/roaming/my-key-remapper") ||
-      normalized.includes("%appdata%/my-key-remapper") ||
-      normalized.includes("$env:appdata/my-key-remapper")
-    ) {
-      return true;
-    }
+  // appdata-link 経由の場合は直接アクセスとみなさない
+  if (str.includes("appdata-link")) {
     return false;
   }
 
-  if (Array.isArray(obj)) {
-    return obj.some((item) => checkValuesForDirectAppData(item));
-  }
-
-  if (typeof obj === "object") {
-    return Object.values(obj).some((val) => checkValuesForDirectAppData(val));
-  }
-
-  return false;
+  // AppData/Roaming/my-key-remapper への直接アクセスを検出
+  const normalized = str.replace(/\\/g, "/").toLowerCase();
+  return (
+    normalized.includes("appdata/roaming/my-key-remapper") ||
+    normalized.includes("%appdata%/my-key-remapper") ||
+    normalized.includes("$env:appdata/my-key-remapper")
+  );
 }
