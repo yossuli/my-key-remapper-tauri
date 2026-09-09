@@ -188,7 +188,7 @@ impl KeyProcessor {
         let mut state = get_state().lock().unwrap();
         let vks = state.pressed_vks.remove(&vk).unwrap_or_default();
         for target in vks {
-            if !(utils::is_modifier(target) && utils::is_modifier_active_in_context(target, &state, config)) {
+            if !(utils::is_modifier(target) && utils::is_modifier_physically_down(target, &state)) {
                 send_key_raw(target, true);
             }
         }
@@ -232,6 +232,14 @@ impl KeyProcessor {
 
     pub fn process_key(vk_code: u16, is_down: bool, config: &Config) -> HookAction {
         let mut state_guard = get_state().lock().unwrap();
+
+        if utils::is_modifier(vk_code) {
+            if is_down {
+                state_guard.physically_pressed_modifiers.insert(vk_code);
+            } else {
+                state_guard.physically_pressed_modifiers.remove(&vk_code);
+            }
+        }
 
         if is_down {
             let mut other_cmds: SmallVec<[(u16, ActionCommand); 16]> = SmallVec::new();
@@ -762,5 +770,79 @@ mod tests {
         let a9 = KeyProcessor::process_key(160, false, &config);
         // passthrough なので PassThrough で OS に KeyUp が届く
         assert_eq!(a9, HookAction::PassThrough);
+    }
+
+    #[test]
+    fn test_modifier_remap_released_cleanly_when_not_physically_held() {
+        let mut config = crate::get_default_config();
+        config.layers.clear();
+        config.layer_order = vec!["base".to_string()];
+
+        let mut base_bindings = std::collections::HashMap::new();
+        // Aキー (65) -> Tap で [Ctrl(162), C(67)]
+        base_bindings.insert(65, vec![crate::Binding {
+            trigger: Trigger::Tap,
+            action: Action::Remap {
+                keys: vec![162, 67],
+                repeat: Some(false),
+                repeat_delay_ms: None,
+                repeat_interval_ms: None,
+            },
+            timing_ms: None,
+            interrupt_behavior: None,
+        }]);
+        // Bキー (66) -> Tap で [Shift(160)] (修飾キー単体リマップ)
+        base_bindings.insert(66, vec![crate::Binding {
+            trigger: Trigger::Tap,
+            action: Action::Remap {
+                keys: vec![160],
+                repeat: Some(false),
+                repeat_delay_ms: None,
+                repeat_interval_ms: None,
+            },
+            timing_ms: None,
+            interrupt_behavior: None,
+        }]);
+
+        config.layers.push(crate::Layer {
+            id: "base".to_string(),
+            bindings: base_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // 状態初期化
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()];
+            state.key_states.clear();
+            state.momentary_layers.clear();
+            state.pressed_vks.clear();
+            state.suppressed_modifiers_for_key.clear();
+            utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        }
+
+        // 1. Aキー (65) 押下 (Tap開始)
+        let _ = KeyProcessor::process_key(65, true, &config);
+        // Aキー (65) リリース (Tap確定・解放)
+        let _ = KeyProcessor::process_key(65, false, &config);
+
+        let sent = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        assert!(sent.iter().any(|&(vk, is_up)| vk == 162 && !is_up), "Ctrl KeyDown should be sent");
+        assert!(sent.iter().any(|&(vk, is_up)| vk == 162 && is_up), "Ctrl KeyUp must be sent after remap! Sent: {:?}", sent);
+        assert!(sent.iter().any(|&(vk, is_up)| vk == 67 && !is_up), "C KeyDown should be sent");
+        assert!(sent.iter().any(|&(vk, is_up)| vk == 67 && is_up), "C KeyUp should be sent");
+
+        // 送信履歴をクリア
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+
+        // 2. Bキー (66) 押下 & リリース (修飾キー単体リマップ: Shift)
+        let _ = KeyProcessor::process_key(66, true, &config);
+        let _ = KeyProcessor::process_key(66, false, &config);
+
+        let sent_b = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        assert!(sent_b.iter().any(|&(vk, is_up)| vk == 160 && !is_up), "Shift KeyDown should be sent");
+        assert!(sent_b.iter().any(|&(vk, is_up)| vk == 160 && is_up), "Shift KeyUp must be sent after modifier-only remap! Sent: {:?}", sent_b);
     }
 }

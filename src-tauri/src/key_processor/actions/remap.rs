@@ -16,12 +16,11 @@ enum RemapReleasePolicy {
 fn determine_release_policy(
     is_atomic: bool,
     repeat: bool,
-    has_non_modifier: bool,
     has_suppressed: bool,
 ) -> RemapReleasePolicy {
-    match (is_atomic, repeat, has_non_modifier, has_suppressed) {
-        (true, _, _, _) | (_, false, true, _) => RemapReleasePolicy::ImmediateRelease,
-        (_, _, _, true) => RemapReleasePolicy::SustainHold,
+    match (is_atomic, repeat, has_suppressed) {
+        (true, _, _) | (_, false, _) => RemapReleasePolicy::ImmediateRelease,
+        (_, true, true) => RemapReleasePolicy::SustainHold,
         _ => RemapReleasePolicy::NoOp,
     }
 }
@@ -61,9 +60,7 @@ pub fn apply(
         send_key_down(physical_vk, target_vk);
     }
 
-    let has_non_modifier = target_vks.iter().any(|&vk| !is_modifier(vk));
-
-    match determine_release_policy(is_atomic, repeat, has_non_modifier, !suppressed.is_empty()) {
+    match determine_release_policy(is_atomic, repeat, !suppressed.is_empty()) {
         RemapReleasePolicy::ImmediateRelease => {
             for &target_vk in target_vks.iter().rev() {
                 send_key_up(physical_vk, target_vk, config);

@@ -9,6 +9,7 @@ pub struct ProcessorState {
     pub momentary_layers: HashMap<u16, Vec<String>>,
     pub saved_mouse_pos: Option<(i32, i32)>,
     pub suppressed_modifiers_for_key: HashMap<u16, Vec<u16>>,
+    pub physically_pressed_modifiers: HashSet<u16>,
 }
 
 impl ProcessorState {
@@ -42,6 +43,7 @@ pub fn get_state_wrapper() -> &'static StateWrapper {
             momentary_layers: HashMap::new(),
             saved_mouse_pos: None,
             suppressed_modifiers_for_key: HashMap::new(),
+            physically_pressed_modifiers: HashSet::new(),
         }),
         cvar: Condvar::new(),
     })

@@ -177,21 +177,21 @@ pub fn send_key_down(physical_vk: u16, virtual_vk: u16) {
     send_key_raw(virtual_vk, false);
 }
 
+#[cfg(test)]
+pub static TEST_PHYSICAL_KEYS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<u16>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+
 pub fn is_physical_key_down(vk: u16, state: &super::state::ProcessorState) -> bool {
-    if state.get_passthrough_trigger_keys().contains(&vk) {
+    // 物理キーフックで追跡中の修飾キー、またはステートマシンで追跡中のキー
+    if state.physically_pressed_modifiers.contains(&vk) {
         return true;
     }
-    #[cfg(windows)]
-    {
-        let state_val = unsafe {
-            windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState(vk as i32)
-        };
-        (state_val as u16 & 0x8000) != 0
+    if let Some(s) = state.key_states.get(&vk) {
+        if *s != crate::state_machine::KeyState::Idle {
+            return true;
+        }
     }
-    #[cfg(not(windows))]
-    {
-        false
-    }
+    false
 }
 
 pub fn is_modifier_physically_down(modifier: u16, state: &super::state::ProcessorState) -> bool {
@@ -214,7 +214,7 @@ pub fn is_modifier_active_in_context(modifier: u16, state: &super::state::Proces
     is_modifier_subsumed(modifier, &current_mods.into_iter().collect::<Vec<_>>())
 }
 
-pub fn send_key_up(physical_vk: u16, virtual_vk: u16, config: &Config) {
+pub fn send_key_up(physical_vk: u16, virtual_vk: u16, _config: &Config) {
     let should_skip_raw_up = {
         let mut state = get_state().lock().unwrap();
         let is_empty = if let Some(vks) = state.pressed_vks.get_mut(&physical_vk) {
@@ -226,7 +226,7 @@ pub fn send_key_up(physical_vk: u16, virtual_vk: u16, config: &Config) {
         if is_empty {
             state.pressed_vks.remove(&physical_vk);
         }
-        is_modifier(virtual_vk) && is_modifier_active_in_context(virtual_vk, &state, config)
+        is_modifier(virtual_vk) && is_modifier_physically_down(virtual_vk, &state)
     };
 
     if !should_skip_raw_up {
