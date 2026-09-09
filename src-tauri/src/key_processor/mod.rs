@@ -40,13 +40,20 @@ impl KeyProcessor {
         config: &'a Config,
         active_layers: &[String],
     ) -> Option<(&'a str, &'a Vec<crate::Binding>)> {
-        for layer_id in config.layer_order.iter().rev() {
-            if active_layers.contains(layer_id) || layer_id == "base" {
-                if let Some(layer) = config.layers.iter().find(|l| &l.id == layer_id) {
-                    if let Some(bindings) = layer.bindings.get(&vk) {
-                        if !bindings.is_empty() {
-                            return Some((layer_id.as_str(), bindings));
-                        }
+        for layer_id in active_layers.iter().rev() {
+            if let Some(layer) = config.layers.iter().find(|l| &l.id == layer_id) {
+                if let Some(bindings) = layer.bindings.get(&vk) {
+                    if !bindings.is_empty() {
+                        return Some((layer.id.as_str(), bindings));
+                    }
+                }
+            }
+        }
+        if !active_layers.iter().any(|l| l == "base") {
+            if let Some(layer) = config.layers.iter().find(|l| l.id == "base") {
+                if let Some(bindings) = layer.bindings.get(&vk) {
+                    if !bindings.is_empty() {
+                        return Some((layer.id.as_str(), bindings));
                     }
                 }
             }
@@ -188,7 +195,7 @@ impl KeyProcessor {
         let mut state = get_state().lock().unwrap();
         let vks = state.pressed_vks.remove(&vk).unwrap_or_default();
         for target in vks {
-            if !(utils::is_modifier(target) && utils::is_modifier_physically_down(target, &state)) {
+            if !(utils::is_modifier(target) && utils::is_modifier_passed_through(target, &state)) {
                 send_key_raw(target, true);
             }
         }
@@ -774,6 +781,7 @@ mod tests {
 
     #[test]
     fn test_modifier_remap_released_cleanly_when_not_physically_held() {
+        let _lock = state::TEST_LOCK.lock().unwrap();
         let mut config = crate::get_default_config();
         config.layers.clear();
         config.layer_order = vec!["base".to_string()];
@@ -791,7 +799,7 @@ mod tests {
             timing_ms: None,
             interrupt_behavior: None,
         }]);
-        // Bキー (66) -> Tap で [Shift(160)] (修飾キー単体リマップ)
+        // Bキー (66) -> Tap で [Shift(160)] (修飾キー単体リマップ: Shift)
         base_bindings.insert(66, vec![crate::Binding {
             trigger: Trigger::Tap,
             action: Action::Remap {
@@ -820,6 +828,7 @@ mod tests {
             state.momentary_layers.clear();
             state.pressed_vks.clear();
             state.suppressed_modifiers_for_key.clear();
+            state.physically_pressed_modifiers.clear();
             utils::TEST_SENT_KEYS.lock().unwrap().clear();
         }
 
@@ -844,5 +853,178 @@ mod tests {
         let sent_b = utils::TEST_SENT_KEYS.lock().unwrap().clone();
         assert!(sent_b.iter().any(|&(vk, is_up)| vk == 160 && !is_up), "Shift KeyDown should be sent");
         assert!(sent_b.iter().any(|&(vk, is_up)| vk == 160 && is_up), "Shift KeyUp must be sent after modifier-only remap! Sent: {:?}", sent_b);
+    }
+
+    #[test]
+    fn test_non_passthrough_momentary_modifier_sends_default_modifiers() {
+        let _lock = state::TEST_LOCK.lock().unwrap();
+        let mut config = crate::get_default_config();
+        config.layers.clear();
+        config.layer_order = vec![
+            "base".to_string(),
+            "num".to_string(),
+            "num_shift".to_string(),
+        ];
+
+        // base: 29 (無変換) -> Hold(num) [forceHold]
+        let mut base_bindings = std::collections::HashMap::new();
+        base_bindings.insert(29, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "num".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "base".to_string(),
+            bindings: base_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // num: 160 (LShift) -> Hold(num_shift) [forceHold, passthroughTriggerKey なし (ブロック)]
+        let mut num_bindings = std::collections::HashMap::new();
+        num_bindings.insert(160, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::LayerMomentary { layer_id: "num_shift".to_string() },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        config.layers.push(crate::Layer {
+            id: "num".to_string(),
+            bindings: num_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // num_shift: defaultModifiers: { shift: true }
+        // 87 ('w') -> Tap(Remap [50])
+        let mut num_shift_bindings = std::collections::HashMap::new();
+        num_shift_bindings.insert(87, vec![crate::Binding {
+            trigger: Trigger::Tap,
+            action: Action::Remap {
+                keys: vec![50],
+                repeat: Some(false),
+                repeat_delay_ms: None,
+                repeat_interval_ms: None,
+            },
+            timing_ms: None,
+            interrupt_behavior: None,
+        }]);
+        config.layers.push(crate::Layer {
+            id: "num_shift".to_string(),
+            bindings: num_shift_bindings,
+            default_modifiers: Some(serde_json::json!({"shift": true})),
+            passthrough_trigger_key: None,
+            parent_layer_id: Some("num".to_string()),
+        });
+
+        // 状態初期化
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()];
+            state.key_states.clear();
+            state.momentary_layers.clear();
+            state.pressed_vks.clear();
+            state.suppressed_modifiers_for_key.clear();
+            state.physically_pressed_modifiers.clear();
+            utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        }
+
+        // 1. 無変換 (29) 押下
+        let a1 = KeyProcessor::process_key(29, true, &config);
+        assert_eq!(a1, HookAction::Block);
+
+        // 2. Shift (160) 押下 -> 29 が ForceHold で確定して num レイヤーへ
+        let a2 = KeyProcessor::process_key(160, true, &config);
+        assert_eq!(a2, HookAction::Block);
+
+        // 3. 'w' (87) 押下 -> 160 が ForceHold で確定して num_shift レイヤーへ
+        let a3 = KeyProcessor::process_key(87, true, &config);
+        assert_eq!(a3, HookAction::Block);
+
+        // ★ 検証: num_shift の defaultModifiers: { shift: true } により、
+        // 物理Shiftはブロックされていても、OSに対して 160 KeyDown が正しく送信されていること！
+        // また、Remap [50] (Shiftなし) の送信時には、Shiftが一時的に suppress され、送信後に restore される。
+        let sent_keys = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        assert_eq!(
+            sent_keys,
+            vec![(160, false), (160, true), (50, false), (50, true), (160, false)],
+            "Expected sequence: Shift Down (layer mod) -> Shift Up (suppress) -> 50 Down -> 50 Up -> Shift Down (restore)"
+        );
+
+        // 'w' (87) リリース
+        let _ = KeyProcessor::process_key(87, false, &config);
+
+        // 4. Shift (160) リリース -> OSに 160 KeyUp が送信されること
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
+        let a4 = KeyProcessor::process_key(160, false, &config);
+        assert_eq!(a4, HookAction::Block);
+
+        let sent_keys_after_rel = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        let shift_up_count = sent_keys_after_rel.iter().filter(|&&(vk, is_up)| vk == 160 && is_up).count();
+        assert_eq!(shift_up_count, 1, "Shift KeyUp must be sent when num_shift is popped! Sent: {:?}", sent_keys_after_rel);
+
+        // 5. 無変換 (29) リリース
+        let _ = KeyProcessor::process_key(29, false, &config);
+    }
+
+    #[test]
+    fn test_get_bindings_with_layer_stack_order() {
+        let mut config = crate::get_default_config();
+        config.layers.clear();
+        // layer_order は "bottom" の方が後ろ
+        config.layer_order = vec!["base".to_string(), "top".to_string(), "bottom".to_string()];
+
+        let mut top_bindings = std::collections::HashMap::new();
+        top_bindings.insert(65, vec![crate::Binding {
+            trigger: Trigger::Tap,
+            action: Action::Remap {
+                keys: vec![1],
+                repeat: None,
+                repeat_delay_ms: None,
+                repeat_interval_ms: None,
+            },
+            timing_ms: None,
+            interrupt_behavior: None,
+        }]);
+        config.layers.push(crate::Layer {
+            id: "top".to_string(),
+            bindings: top_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        let mut bottom_bindings = std::collections::HashMap::new();
+        bottom_bindings.insert(65, vec![crate::Binding {
+            trigger: Trigger::Tap,
+            action: Action::Remap {
+                keys: vec![2],
+                repeat: None,
+                repeat_delay_ms: None,
+                repeat_interval_ms: None,
+            },
+            timing_ms: None,
+            interrupt_behavior: None,
+        }]);
+        config.layers.push(crate::Layer {
+            id: "bottom".to_string(),
+            bindings: bottom_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // スタックで top が上（末尾）にある場合
+        let stack1 = vec!["base".to_string(), "bottom".to_string(), "top".to_string()];
+        let (found_layer, _) = KeyProcessor::get_bindings_with_layer(65, &config, &stack1).unwrap();
+        assert_eq!(found_layer, "top");
+
+        // スタックで bottom が上（末尾）にある場合
+        let stack2 = vec!["base".to_string(), "top".to_string(), "bottom".to_string()];
+        let (found_layer2, _) = KeyProcessor::get_bindings_with_layer(65, &config, &stack2).unwrap();
+        assert_eq!(found_layer2, "bottom");
     }
 }

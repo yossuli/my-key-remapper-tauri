@@ -194,6 +194,30 @@ pub fn is_physical_key_down(vk: u16, state: &super::state::ProcessorState) -> bo
     false
 }
 
+pub fn is_key_passed_through(vk: u16, state: &super::state::ProcessorState) -> bool {
+    if !state.physically_pressed_modifiers.contains(&vk) {
+        return false;
+    }
+    if let Some(s) = state.key_states.get(&vk) {
+        if *s != crate::state_machine::KeyState::Idle {
+            return state.get_passthrough_trigger_keys().contains(&vk);
+        }
+    }
+    true
+}
+
+pub fn is_modifier_passed_through(modifier: u16, state: &super::state::ProcessorState) -> bool {
+    let check_keys = match modifier {
+        VK_SHIFT | VK_LSHIFT | VK_RSHIFT => &[VK_SHIFT, VK_LSHIFT, VK_RSHIFT][..],
+        VK_CONTROL | VK_LCONTROL | VK_RCONTROL => &[VK_CONTROL, VK_LCONTROL, VK_RCONTROL][..],
+        VK_MENU | VK_LMENU | VK_RMENU => &[VK_MENU, VK_LMENU, VK_RMENU][..],
+        VK_LWIN | VK_RWIN => &[VK_LWIN, VK_RWIN][..],
+        _ => return is_key_passed_through(modifier, state),
+    };
+
+    check_keys.iter().any(|&k| is_key_passed_through(k, state))
+}
+
 pub fn is_modifier_physically_down(modifier: u16, state: &super::state::ProcessorState) -> bool {
     let check_keys = match modifier {
         VK_SHIFT | VK_LSHIFT | VK_RSHIFT => &[VK_SHIFT, VK_LSHIFT, VK_RSHIFT][..],
@@ -226,7 +250,7 @@ pub fn send_key_up(physical_vk: u16, virtual_vk: u16, _config: &Config) {
         if is_empty {
             state.pressed_vks.remove(&physical_vk);
         }
-        is_modifier(virtual_vk) && is_modifier_physically_down(virtual_vk, &state)
+        is_modifier(virtual_vk) && is_modifier_passed_through(virtual_vk, &state)
     };
 
     if !should_skip_raw_up {
@@ -380,12 +404,12 @@ pub fn apply_layer_modifiers(old_layers: &[String], new_layers: &[String], confi
     let state = get_state().lock().unwrap();
 
     for &modifier in new_mods.difference(&old_mods) {
-        if !is_modifier_physically_down(modifier, &state) {
+        if !is_modifier_passed_through(modifier, &state) {
             send_key_raw(modifier, false);
         }
     }
     for &modifier in old_mods.difference(&new_mods) {
-        if !is_modifier_physically_down(modifier, &state) {
+        if !is_modifier_passed_through(modifier, &state) {
             send_key_raw(modifier, true);
         }
     }

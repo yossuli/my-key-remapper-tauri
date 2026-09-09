@@ -6,3 +6,4 @@ out/
 docs
 electron.vite.config.*.mjs
 .cache/
+appdata-link
