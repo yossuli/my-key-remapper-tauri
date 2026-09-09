@@ -29,6 +29,11 @@ export interface UseLayerStateReturn {
     activeTrigger?: TriggerType
   ) => void;
   removeMapping: (from: number, trigger: TriggerType) => void;
+  moveMappings: (
+    fromVk: number,
+    toVk: number,
+    targetLayerIds: string[]
+  ) => void;
   updateLayer: (layerId: string, updates: Partial<Layer>) => void; // 追加
   reloadLayers: () => Promise<void>; // 追加
 }
@@ -133,6 +138,34 @@ export function useLayerState(): UseLayerStateReturn {
     [send, layerId]
   );
 
+  // マッピング移動（D&D用）
+  const moveMappings = useCallback<UseLayerStateReturn["moveMappings"]>(
+    (fromVk, toVk, targetLayerIds) => {
+      send("move-key-mappings", { fromVk, toVk, layerIds: targetLayerIds });
+      // 楽観的更新
+      setLayers((prev) =>
+        prev.map((layer) => {
+          if (!(targetLayerIds.includes(layer.id) && layer.bindings[fromVk])) {
+            return layer;
+          }
+          const sourceBindings = layer.bindings[fromVk];
+          const { [fromVk]: _, ...remainingBindings } = layer.bindings;
+          return {
+            ...layer,
+            bindings: {
+              ...remainingBindings,
+              [toVk]: sourceBindings,
+            },
+          };
+        })
+      );
+      setTimeout(() => {
+        loadLayers();
+      }, REFRESH_DELAY_MS);
+    },
+    [send, loadLayers]
+  );
+
   // レイヤーをlayerOrderに基づいてソート
   const sortedLayers = useMemo(() => {
     if (layerOrder.length === 0) {
@@ -177,6 +210,7 @@ export function useLayerState(): UseLayerStateReturn {
     reorderLayers,
     saveMapping,
     removeMapping,
+    moveMappings,
     reloadLayers: loadLayers,
   };
 }

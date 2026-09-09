@@ -34,6 +34,7 @@ export type LayerState = Pick<UseLayerStateReturn, "layers" | "layerId">;
 export interface MappingActions {
   saveMapping: UseLayerStateReturn["saveMapping"];
   removeMapping: (from: number) => void;
+  moveMappings: UseLayerStateReturn["moveMappings"];
 }
 
 interface KeyRemapperPageProps {
@@ -48,6 +49,7 @@ export function KeyRemapperPage({ onNavigateMacros }: KeyRemapperPageProps) {
     currentBindings,
     saveMapping,
     removeMapping,
+    moveMappings,
     reloadLayers,
     setLayerId,
     addLayer,
@@ -100,6 +102,7 @@ export function KeyRemapperPage({ onNavigateMacros }: KeyRemapperPageProps) {
   const mappingActions: MappingActions = {
     saveMapping,
     removeMapping: (from: number) => removeMapping(from, selectedTrigger),
+    moveMappings,
   };
   return (
     <>

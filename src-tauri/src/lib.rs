@@ -264,6 +264,39 @@ fn remove_binding(layer_id: String, from: u32, trigger: Trigger, state: State<'_
     }
 }
 
+#[tauri::command(rename = "move-key-mappings")]
+fn move_key_mappings(
+    from_vk: u32,
+    to_vk: u32,
+    layer_ids: Vec<String>,
+    state: State<'_, ConfigState>,
+) {
+    log::info!(
+        "move_key_mappings: from_vk={}, to_vk={}, layer_ids={:?}",
+        from_vk,
+        to_vk,
+        layer_ids
+    );
+    let mut config = (**state.config.load()).clone();
+    let src = from_vk as u16;
+    let dst = to_vk as u16;
+    let mut modified = false;
+
+    for layer in config.layers.iter_mut() {
+        if layer_ids.contains(&layer.id) {
+            if let Some(bindings) = layer.bindings.remove(&src) {
+                layer.bindings.insert(dst, bindings);
+                modified = true;
+            }
+        }
+    }
+
+    if modified {
+        save_current_config(&config, &state);
+        state.config.store(Arc::new(config));
+    }
+}
+
 #[tauri::command(rename = "update-layer")]
 fn update_layer(layer_id: String, updates: Value, state: State<'_, ConfigState>) {
     log::info!("update_layer: layer={}, updates={:?}", layer_id, updates);
@@ -332,6 +365,7 @@ pub fn run() {
             remove_layer,
             reorder_layers,
             remove_binding,
+            move_key_mappings,
             update_layer,
             profile::list_profiles,
             profile::load_profile,
@@ -355,4 +389,72 @@ pub fn run() {
         }
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_move_key_mappings_logic() {
+        let mut layers = vec![
+            Layer {
+                id: "base".to_string(),
+                bindings: {
+                    let mut map = HashMap::new();
+                    map.insert(
+                        65u16,
+                        vec![Binding {
+                            trigger: Trigger::Tap,
+                            action: Action::None,
+                            timing_ms: None,
+                            interrupt_behavior: None,
+                        }],
+                    );
+                    map
+                },
+                default_modifiers: None,
+                passthrough_trigger_key: None,
+            },
+            Layer {
+                id: "fn".to_string(),
+                bindings: {
+                    let mut map = HashMap::new();
+                    map.insert(
+                        65u16,
+                        vec![Binding {
+                            trigger: Trigger::Hold,
+                            action: Action::None,
+                            timing_ms: None,
+                            interrupt_behavior: None,
+                        }],
+                    );
+                    map
+                },
+                default_modifiers: None,
+                passthrough_trigger_key: None,
+            },
+        ];
+
+        let from_vk = 65u16;
+        let to_vk = 66u16;
+        let target_layer_ids = vec!["base".to_string(), "fn".to_string()];
+
+        for layer in layers.iter_mut() {
+            if target_layer_ids.contains(&layer.id) {
+                if let Some(bindings) = layer.bindings.remove(&from_vk) {
+                    layer.bindings.insert(to_vk, bindings);
+                }
+            }
+        }
+
+        assert!(!layers[0].bindings.contains_key(&65));
+        assert!(layers[0].bindings.contains_key(&66));
+        assert_eq!(layers[0].bindings.get(&66).unwrap()[0].trigger, Trigger::Tap);
+
+        assert!(!layers[1].bindings.contains_key(&65));
+        assert!(layers[1].bindings.contains_key(&66));
+        assert_eq!(layers[1].bindings.get(&66).unwrap()[0].trigger, Trigger::Hold);
+    }
 }

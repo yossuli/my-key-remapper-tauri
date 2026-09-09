@@ -241,6 +241,40 @@ const commandHandlers: Record<string, CommandHandler> = {
     }
   },
 
+  "move-key-mappings": (args: {
+    fromVk: number;
+    toVk: number;
+    layerIds: string[];
+  }) => {
+    const state = getMockState();
+    const config = state.profiles[state.activeProfile];
+    if (!config) {
+      return;
+    }
+
+    let modified = false;
+    for (const layer of config.layers) {
+      if (args.layerIds.includes(layer.id)) {
+        const key = Object.keys(layer.bindings).find(
+          (k) => Number(k) === args.fromVk
+        );
+        if (key) {
+          const bindings =
+            layer.bindings[Number(key)] ??
+            (layer.bindings as Record<string, unknown>)[key];
+          delete layer.bindings[Number(key)];
+          delete (layer.bindings as Record<string, unknown>)[key];
+          layer.bindings[args.toVk] =
+            bindings as (typeof layer.bindings)[number];
+          modified = true;
+        }
+      }
+    }
+    if (modified) {
+      saveMockState(state);
+    }
+  },
+
   "add-layer": (args: { layerId: string }) => {
     const state = getMockState();
     const config = state.profiles[state.activeProfile];

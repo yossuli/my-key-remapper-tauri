@@ -11,6 +11,10 @@ import { Icon } from "@/components/atoms/Icon";
 import { RemapDisabler } from "@/components/control/RemapDisabler";
 import { LayoutToggle } from "@/components/molecules/display/LayoutToggle";
 import { TriggerTabs } from "@/components/molecules/forms/TriggerTabs";
+import {
+  MoveMappingConfirmModal,
+  type MoveMappingTarget,
+} from "@/components/molecules/MoveMappingConfirmModal";
 import { KeyboardGrid } from "@/components/organisms/KeyboardGrid";
 import { LayerTabs } from "@/components/organisms/keyboard/LayerTabs";
 import type {
@@ -85,6 +89,7 @@ export function KeyRemapSection({
   setEditingKey,
 }: KeyRemapSectionProps) {
   const [isQuickEditMode, setIsQuickEditMode] = useState(false);
+  const [moveTarget, setMoveTarget] = useState<MoveMappingTarget | null>(null);
   const { macros } = useMacros();
 
   const macroNameMap = useMemo(() => {
@@ -116,6 +121,25 @@ export function KeyRemapSection({
 
   const onToggleQuickEditMode = useCallback(() => {
     setIsQuickEditMode((prev) => !prev);
+  }, []);
+
+  const handleMoveMapping = useCallback(
+    (fromVk: number, fromLabel: string, toVk: number, toLabel: string) => {
+      setMoveTarget({ fromVk, fromLabel, toVk, toLabel });
+    },
+    []
+  );
+
+  const handleConfirmMove = useCallback(
+    (fromVk: number, toVk: number, targetLayerIds: string[]) => {
+      mappingActions.moveMappings(fromVk, toVk, targetLayerIds);
+      setMoveTarget(null);
+    },
+    [mappingActions]
+  );
+
+  const handleCancelMove = useCallback(() => {
+    setMoveTarget(null);
   }, []);
 
   return (
@@ -158,6 +182,7 @@ export function KeyRemapSection({
           macroNameMap={macroNameMap}
           mappingActions={mappingActions}
           onKeyClick={onKeyClick}
+          onMoveMapping={handleMoveMapping}
           quickEditingKey={quickEditingKey}
           selectedTrigger={selectedTrigger}
         />
@@ -169,6 +194,14 @@ export function KeyRemapSection({
         </h2>
         <LayoutToggle currentLayout={layout} onToggle={toggleLayout} />
       </div>
+
+      <MoveMappingConfirmModal
+        currentLayerId={layerState.layerId}
+        layers={layerState.layers}
+        onCancel={handleCancelMove}
+        onConfirm={handleConfirmMove}
+        target={moveTarget}
+      />
     </VStack>
   );
 }
