@@ -26,5 +26,19 @@
         "timeout": 15
       }
     ]
+  },
+  "block-direct-appdata": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/hook-block-appdata.mjs",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
   }
 }

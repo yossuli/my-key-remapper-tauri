@@ -9,7 +9,8 @@ process.stdin.on("data", (chunk) => {
 
 process.stdin.on("end", () => {
   try {
-    const statusFile = path.resolve(".cache/verify-status.json");
+    const projectRoot = path.resolve("..");
+    const statusFile = path.join(projectRoot, ".cache/verify-status.json");
 
     if (fs.existsSync(statusFile)) {
       const data = JSON.parse(fs.readFileSync(statusFile, "utf-8"));

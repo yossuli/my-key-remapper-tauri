@@ -11,15 +11,17 @@ process.stdin.on("data", (chunk) => {
 
 process.stdin.on("end", () => {
   try {
-    const cacheDir = path.resolve(".cache");
+    const projectRoot = path.resolve("..");
+    const cacheDir = path.join(projectRoot, ".cache");
     if (!fs.existsSync(cacheDir)) {
       fs.mkdirSync(cacheDir, { recursive: true });
     }
 
     const statusFile = path.join(cacheDir, "verify-status.json");
 
-    // 差分検証を実行
+    // 差分検証を実行（プロジェクトルートをcwdに指定）
     const verifyResult = spawnSync("node", ["scripts/verify.mjs"], {
+      cwd: projectRoot,
       encoding: "utf-8",
       shell: true,
     });
