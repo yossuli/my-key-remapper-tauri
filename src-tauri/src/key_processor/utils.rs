@@ -1,12 +1,17 @@
 use smallvec::SmallVec;
 use crate::Config;
 use std::collections::HashSet;
+#[cfg(all(windows, not(test)))]
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_EXTENDEDKEY,
-    KEYBD_EVENT_FLAGS,
+    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD,
     INPUT_MOUSE, MOUSEINPUT,
     MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP,
-    MOUSEEVENTF_WHEEL, MOUSEEVENTF_HWHEEL
+    MOUSEEVENTF_WHEEL, MOUSEEVENTF_HWHEEL,
+};
+#[cfg(windows)]
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    KEYBDINPUT, KEYEVENTF_KEYUP, KEYEVENTF_EXTENDEDKEY,
+    KEYBD_EVENT_FLAGS,
 };
 use super::state::get_state;
 
@@ -144,8 +149,9 @@ pub fn send_key_raw(vk: u16, is_up: bool) {
         if let Ok(mut keys) = TEST_SENT_KEYS.lock() {
             keys.push((vk, is_up));
         }
+        return;
     }
-    #[cfg(windows)]
+    #[cfg(all(windows, not(test)))]
     {
         let ki = build_keybd_input(vk, is_up);
         let input = INPUT {
@@ -156,14 +162,14 @@ pub fn send_key_raw(vk: u16, is_up: bool) {
             SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
         }
     }
-    #[cfg(not(windows))]
+    #[cfg(all(not(windows), not(test)))]
     {
         let _ = (vk, is_up);
     }
 }
 
 pub fn send_key_atomic(virtual_vk: u16) {
-    #[cfg(windows)]
+    #[cfg(all(windows, not(test)))]
     {
         let ki_down = build_keybd_input(virtual_vk, false);
         let ki_up = build_keybd_input(virtual_vk, true);
@@ -181,7 +187,7 @@ pub fn send_key_atomic(virtual_vk: u16) {
             SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
         }
     }
-    #[cfg(not(windows))]
+    #[cfg(not(all(windows, not(test))))]
     {
         send_key_raw(virtual_vk, false);
         send_key_raw(virtual_vk, true);
@@ -505,100 +511,150 @@ pub fn restore_suppressed_modifiers(suppressed: &[u16]) {
     }
 }
 
+#[cfg(all(windows, not(test)))]
 use windows::Win32::UI::WindowsAndMessaging::{SetCursorPos, GetCursorPos, GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
+#[cfg(all(windows, not(test)))]
 use windows::Win32::Foundation::POINT;
 
 pub fn get_screen_size() -> (i32, i32) {
-    let width = unsafe { GetSystemMetrics(SM_CXSCREEN) };
-    let height = unsafe { GetSystemMetrics(SM_CYSCREEN) };
-    (width, height)
+    #[cfg(all(windows, not(test)))]
+    {
+        let width = unsafe { GetSystemMetrics(SM_CXSCREEN) };
+        let height = unsafe { GetSystemMetrics(SM_CYSCREEN) };
+        (width, height)
+    }
+    #[cfg(not(all(windows, not(test))))]
+    {
+        (1920, 1080)
+    }
 }
 
 pub fn get_mouse_pos() -> (i32, i32) {
-    let mut pt = POINT { x: 0, y: 0 };
-    unsafe {
-        let _ = GetCursorPos(&mut pt);
+    #[cfg(all(windows, not(test)))]
+    {
+        let mut pt = POINT { x: 0, y: 0 };
+        unsafe {
+            let _ = GetCursorPos(&mut pt);
+        }
+        (pt.x, pt.y)
     }
-    (pt.x, pt.y)
+    #[cfg(not(all(windows, not(test))))]
+    {
+        (0, 0)
+    }
 }
 
 pub fn send_mouse_move(x: i32, y: i32) {
     log::info!("send_mouse_move: x={}, y={}", x, y);
+    #[cfg(test)]
+    {
+        let _ = (x, y);
+        return;
+    }
+    #[cfg(all(windows, not(test)))]
     unsafe {
         let result = SetCursorPos(x, y);
         log::info!("SetCursorPos result: {:?}", result);
+    }
+    #[cfg(all(not(windows), not(test)))]
+    {
+        let _ = (x, y);
     }
 }
 
 pub fn send_mouse_click(button: &str, click_count: u32) {
     log::info!("send_mouse_click: button={}, count={}", button, click_count);
-    let (down_flag, up_flag) = match button {
-        "right" => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
-        "middle" => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP),
-        _ => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP),
-    };
-
-    let mut inputs = Vec::new();
-    for _ in 0..click_count.max(1) {
-        inputs.push(INPUT {
-            r#type: INPUT_MOUSE,
-            Anonymous: INPUT_0 {
-                mi: MOUSEINPUT { dx: 0, dy: 0, mouseData: 0, dwFlags: down_flag, time: 0, dwExtraInfo: INJECTED_SIGNATURE },
-            },
-        });
-        inputs.push(INPUT {
-            r#type: INPUT_MOUSE,
-            Anonymous: INPUT_0 {
-                mi: MOUSEINPUT { dx: 0, dy: 0, mouseData: 0, dwFlags: up_flag, time: 0, dwExtraInfo: INJECTED_SIGNATURE },
-            },
-        });
+    #[cfg(test)]
+    {
+        let _ = (button, click_count);
+        return;
     }
+    #[cfg(all(windows, not(test)))]
+    {
+        let (down_flag, up_flag) = match button {
+            "right" => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
+            "middle" => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP),
+            _ => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP),
+        };
 
-    unsafe {
-        let result = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
-        log::info!("send_mouse_click result: {}", result);
+        let mut inputs = Vec::new();
+        for _ in 0..click_count.max(1) {
+            inputs.push(INPUT {
+                r#type: INPUT_MOUSE,
+                Anonymous: INPUT_0 {
+                    mi: MOUSEINPUT { dx: 0, dy: 0, mouseData: 0, dwFlags: down_flag, time: 0, dwExtraInfo: INJECTED_SIGNATURE },
+                },
+            });
+            inputs.push(INPUT {
+                r#type: INPUT_MOUSE,
+                Anonymous: INPUT_0 {
+                    mi: MOUSEINPUT { dx: 0, dy: 0, mouseData: 0, dwFlags: up_flag, time: 0, dwExtraInfo: INJECTED_SIGNATURE },
+                },
+            });
+        }
+
+        unsafe {
+            let result = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+            log::info!("send_mouse_click result: {}", result);
+        }
+    }
+    #[cfg(all(not(windows), not(test)))]
+    {
+        let _ = (button, click_count);
     }
 }
 
 pub fn send_mouse_wheel(delta_y: i32, delta_x: i32) {
-    let mut inputs = Vec::new();
-
-    if delta_y != 0 {
-        inputs.push(INPUT {
-            r#type: INPUT_MOUSE,
-            Anonymous: INPUT_0 {
-                mi: MOUSEINPUT {
-                    dx: 0,
-                    dy: 0,
-                    mouseData: delta_y as u32,
-                    dwFlags: MOUSEEVENTF_WHEEL,
-                    time: 0,
-                    dwExtraInfo: INJECTED_SIGNATURE,
-                },
-            },
-        });
+    #[cfg(test)]
+    {
+        let _ = (delta_y, delta_x);
+        return;
     }
+    #[cfg(all(windows, not(test)))]
+    {
+        let mut inputs = Vec::new();
 
-    if delta_x != 0 {
-        inputs.push(INPUT {
-            r#type: INPUT_MOUSE,
-            Anonymous: INPUT_0 {
-                mi: MOUSEINPUT {
-                    dx: 0,
-                    dy: 0,
-                    mouseData: delta_x as u32,
-                    dwFlags: MOUSEEVENTF_HWHEEL,
-                    time: 0,
-                    dwExtraInfo: INJECTED_SIGNATURE,
+        if delta_y != 0 {
+            inputs.push(INPUT {
+                r#type: INPUT_MOUSE,
+                Anonymous: INPUT_0 {
+                    mi: MOUSEINPUT {
+                        dx: 0,
+                        dy: 0,
+                        mouseData: delta_y as u32,
+                        dwFlags: MOUSEEVENTF_WHEEL,
+                        time: 0,
+                        dwExtraInfo: INJECTED_SIGNATURE,
+                    },
                 },
-            },
-        });
-    }
-
-    if !inputs.is_empty() {
-        unsafe {
-            let _ = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+            });
         }
+
+        if delta_x != 0 {
+            inputs.push(INPUT {
+                r#type: INPUT_MOUSE,
+                Anonymous: INPUT_0 {
+                    mi: MOUSEINPUT {
+                        dx: 0,
+                        dy: 0,
+                        mouseData: delta_x as u32,
+                        dwFlags: MOUSEEVENTF_HWHEEL,
+                        time: 0,
+                        dwExtraInfo: INJECTED_SIGNATURE,
+                    },
+                },
+            });
+        }
+
+        if !inputs.is_empty() {
+            unsafe {
+                let _ = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+            }
+        }
+    }
+    #[cfg(all(not(windows), not(test)))]
+    {
+        let _ = (delta_y, delta_x);
     }
 }
 
@@ -838,6 +894,31 @@ mod tests {
         let is_phys_injected = (flags_physical & 0x10) != 0;
         let is_phys_self_injected = is_phys_injected && ext_extra_info == INJECTED_SIGNATURE;
         assert!(!is_phys_self_injected, "Physical key input must NOT be recognized as self-injected");
+    }
+
+    #[test]
+    fn test_send_key_isolation_in_tests() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        TEST_SENT_KEYS.lock().unwrap().clear();
+
+        send_key_raw(0x41, false);
+        send_key_raw(0x41, true);
+        send_key_atomic(0x42);
+
+        let keys = TEST_SENT_KEYS.lock().unwrap().clone();
+        assert_eq!(keys, vec![
+            (0x41, false),
+            (0x41, true),
+            (0x42, false),
+            (0x42, true),
+        ]);
+
+        // マウス操作関数もテスト中に安全に呼び出せ、パニックやOS漏れ出しを起こさないこと
+        send_mouse_move(100, 200);
+        send_mouse_click("left", 1);
+        send_mouse_wheel(120, 0);
+        let pos = get_mouse_pos();
+        assert_eq!(pos, (0, 0));
     }
 }
 
