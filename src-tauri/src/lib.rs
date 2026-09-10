@@ -234,14 +234,27 @@ fn add_layer(layer_id: String, state: State<'_, ConfigState>) {
     }
 }
 
+pub fn remove_layer_internal(config: &mut Config, layer_id: &str) -> Result<(), String> {
+    if layer_id == "base" {
+        return Err("baseレイヤーは削除できません。".to_string());
+    }
+    let initial_count = config.layers.len();
+    config.layers.retain(|l| l.id != layer_id);
+    if config.layers.len() == initial_count {
+        return Err(format!("レイヤー '{}' が見つかりません。", layer_id));
+    }
+    config.layer_order.retain(|id| id != layer_id);
+    Ok(())
+}
+
 #[tauri::command(rename = "remove-layer")]
-fn remove_layer(layer_id: String, state: State<'_, ConfigState>) {
+fn remove_layer(layer_id: String, state: State<'_, ConfigState>) -> Result<(), String> {
     log::info!("remove_layer: {}", layer_id);
     let mut config = (**state.config.load()).clone();
-    config.layers.retain(|l| l.id != layer_id);
-    config.layer_order.retain(|id| id != &layer_id);
+    remove_layer_internal(&mut config, &layer_id)?;
     save_current_config(&config, &state);
     state.config.store(Arc::new(config));
+    Ok(())
 }
 
 #[tauri::command(rename = "reorder-layers")]
@@ -300,10 +313,33 @@ fn move_key_mappings(
     }
 }
 
-#[tauri::command(rename = "update-layer")]
-fn update_layer(layer_id: String, updates: Value, state: State<'_, ConfigState>) {
-    log::info!("update_layer: layer={}, updates={:?}", layer_id, updates);
-    let mut config = (**state.config.load()).clone();
+pub fn update_layer_internal(config: &mut Config, layer_id: &str, updates: &Value) -> Result<(), String> {
+    if let Some(new_id) = updates.get("id").and_then(|v| v.as_str()) {
+        if layer_id == "base" && new_id != "base" {
+            return Err("baseレイヤーのIDは変更できません。".to_string());
+        }
+        if layer_id != "base" && new_id == "base" {
+            return Err("baseというIDへの変更は禁止されています。".to_string());
+        }
+        let trimmed_new_id = new_id.trim();
+        if trimmed_new_id.is_empty() {
+            return Err("レイヤーIDを空にすることはできません。".to_string());
+        }
+        if new_id != layer_id && config.layers.iter().any(|l| l.id == new_id) {
+            return Err(format!("レイヤー '{}' は既に存在します。", new_id));
+        }
+    }
+
+    let rename_info = if let Some(new_id) = updates.get("id").and_then(|v| v.as_str()) {
+        if new_id != layer_id {
+            Some((layer_id.to_string(), new_id.to_string()))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     if let Some(layer) = config.layers.iter_mut().find(|l| l.id == layer_id) {
         if let Some(default_modifiers) = updates.get("defaultModifiers") {
             if let Ok(mods) = serde_json::from_value::<ModifierOutput>(default_modifiers.clone()) {
@@ -325,19 +361,52 @@ fn update_layer(layer_id: String, updates: Value, state: State<'_, ConfigState>)
                 }
             }
         }
-        if let Some(new_id) = updates.get("id").and_then(|v| v.as_str()) {
-            if new_id != layer_id {
-                layer.id = new_id.to_string();
-                for id in &mut config.layer_order {
-                    if *id == layer_id {
-                        *id = new_id.to_string();
+        if let Some((_, ref new_id)) = rename_info {
+            layer.id = new_id.clone();
+        }
+    } else {
+        return Err(format!("レイヤー '{}' が見つかりません。", layer_id));
+    }
+
+    if let Some((ref old_id, ref new_id)) = rename_info {
+        // layer_order の更新
+        for id in &mut config.layer_order {
+            if *id == *old_id {
+                *id = new_id.clone();
+            }
+        }
+        // 他レイヤーの parent_layer_id およびキーバインディング内アクションの参照カスケード更新
+        for l in &mut config.layers {
+            if l.parent_layer_id.as_deref() == Some(old_id.as_str()) {
+                l.parent_layer_id = Some(new_id.clone());
+            }
+            for bindings_vec in l.bindings.values_mut() {
+                for binding in bindings_vec.iter_mut() {
+                    match &mut binding.action {
+                        Action::LayerMomentary { layer_id: target_lid } if target_lid == old_id => {
+                            *target_lid = new_id.clone();
+                        }
+                        Action::LayerToggle { layer_id: target_lid } if target_lid == old_id => {
+                            *target_lid = new_id.clone();
+                        }
+                        _ => {}
                     }
                 }
             }
         }
-        save_current_config(&config, &state);
-        state.config.store(Arc::new(config));
     }
+
+    Ok(())
+}
+
+#[tauri::command(rename = "update-layer")]
+fn update_layer(layer_id: String, updates: Value, state: State<'_, ConfigState>) -> Result<(), String> {
+    log::info!("update_layer: layer={}, updates={:?}", layer_id, updates);
+    let mut config = (**state.config.load()).clone();
+    update_layer_internal(&mut config, &layer_id, &updates)?;
+    save_current_config(&config, &state);
+    state.config.store(Arc::new(config));
+    Ok(())
 }
 
 #[tauri::command(rename = "reset-layer")]
@@ -488,5 +557,171 @@ mod tests {
         assert!(!layers[1].bindings.contains_key(&65));
         assert!(layers[1].bindings.contains_key(&66));
         assert_eq!(layers[1].bindings.get(&66).unwrap()[0].trigger, Trigger::Hold);
+    }
+
+    #[test]
+    fn test_remove_base_layer_prohibited() {
+        let mut config = crate::get_default_config();
+        let result = remove_layer_internal(&mut config, "base");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "baseレイヤーは削除できません。");
+        // base レイヤーが依然として存在することを確認
+        assert!(config.layers.iter().any(|l| l.id == "base"));
+    }
+
+    #[test]
+    fn test_remove_layer_success_and_not_found() {
+        let mut config = crate::get_default_config();
+        // 新しいレイヤーを追加
+        config.layers.push(Layer {
+            id: "custom".to_string(),
+            bindings: HashMap::new(),
+            ..Default::default()
+        });
+        config.layer_order.push("custom".to_string());
+
+        // 正常削除
+        assert!(remove_layer_internal(&mut config, "custom").is_ok());
+        assert!(!config.layers.iter().any(|l| l.id == "custom"));
+        assert!(!config.layer_order.contains(&"custom".to_string()));
+
+        // 存在しないレイヤーの削除
+        let not_found_result = remove_layer_internal(&mut config, "non_existent");
+        assert!(not_found_result.is_err());
+        assert_eq!(not_found_result.unwrap_err(), "レイヤー 'non_existent' が見つかりません。");
+    }
+
+    #[test]
+    fn test_update_base_layer_id_prohibited() {
+        let mut config = crate::get_default_config();
+        
+        // base レイヤーの改名試行
+        let rename_base = serde_json::json!({ "id": "renamed_base" });
+        let result = update_layer_internal(&mut config, "base", &rename_base);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "baseレイヤーのIDは変更できません。");
+        assert_eq!(config.layers[0].id, "base");
+
+        // 別レイヤーを base へ改名する試行
+        config.layers.push(Layer {
+            id: "custom".to_string(),
+            bindings: HashMap::new(),
+            ..Default::default()
+        });
+        config.layer_order.push("custom".to_string());
+
+        let rename_to_base = serde_json::json!({ "id": "base" });
+        let result = update_layer_internal(&mut config, "custom", &rename_to_base);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "baseというIDへの変更は禁止されています。");
+    }
+
+    #[test]
+    fn test_update_layer_validations_and_success() {
+        let mut config = crate::get_default_config();
+        config.layers.push(Layer {
+            id: "fn".to_string(),
+            bindings: HashMap::new(),
+            ..Default::default()
+        });
+        config.layer_order.push("fn".to_string());
+
+        // 重複IDへの改名試行
+        let duplicate_id = serde_json::json!({ "id": "fn" });
+        // base を fn にしようとするのは上の base ガードで止まるが、もう一つレイヤーを用意
+        config.layers.push(Layer {
+            id: "layer3".to_string(),
+            bindings: HashMap::new(),
+            ..Default::default()
+        });
+        config.layer_order.push("layer3".to_string());
+
+        let result = update_layer_internal(&mut config, "layer3", &duplicate_id);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "レイヤー 'fn' は既に存在します。");
+
+        // 空IDへの改名試行
+        let empty_id = serde_json::json!({ "id": "   " });
+        let result = update_layer_internal(&mut config, "layer3", &empty_id);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "レイヤーIDを空にすることはできません。");
+
+        // 正常な更新（ID変更と親レイヤー設定）
+        let valid_update = serde_json::json!({
+            "id": "fn_renamed",
+            "parentLayerId": "base"
+        });
+        assert!(update_layer_internal(&mut config, "fn", &valid_update).is_ok());
+        assert!(config.layers.iter().any(|l| l.id == "fn_renamed"));
+        assert!(config.layer_order.contains(&"fn_renamed".to_string()));
+        assert!(!config.layer_order.contains(&"fn".to_string()));
+        let updated_layer = config.layers.iter().find(|l| l.id == "fn_renamed").unwrap();
+        assert_eq!(updated_layer.parent_layer_id.as_deref(), Some("base"));
+    }
+
+    #[test]
+    fn test_update_layer_cascading_references() {
+        let mut config = crate::get_default_config();
+
+        // 対象レイヤー "fn" を追加
+        config.layers.push(Layer {
+            id: "fn".to_string(),
+            bindings: HashMap::new(),
+            ..Default::default()
+        });
+        config.layer_order.push("fn".to_string());
+
+        // 子レイヤー "sub_fn" を追加（親レイヤーに "fn" を指定）
+        config.layers.push(Layer {
+            id: "sub_fn".to_string(),
+            parent_layer_id: Some("fn".to_string()),
+            bindings: HashMap::new(),
+            ..Default::default()
+        });
+        config.layer_order.push("sub_fn".to_string());
+
+        // base レイヤーのキーバインディングに "fn" を参照するアクションを追加
+        let mut bindings = HashMap::new();
+        bindings.insert(
+            65u16,
+            vec![
+                crate::Binding {
+                    trigger: crate::Trigger::Hold,
+                    action: Action::LayerMomentary { layer_id: "fn".to_string() },
+                    timing_ms: None,
+                    interrupt_behavior: None,
+                },
+                crate::Binding {
+                    trigger: crate::Trigger::Tap,
+                    action: Action::LayerToggle { layer_id: "fn".to_string() },
+                    timing_ms: None,
+                    interrupt_behavior: None,
+                },
+            ],
+        );
+        config.layers[0].bindings = bindings;
+
+        // "fn" を "fn_v2" に改名
+        let rename_update = serde_json::json!({ "id": "fn_v2" });
+        assert!(update_layer_internal(&mut config, "fn", &rename_update).is_ok());
+
+        // 1. レイヤー自体の ID が変更されていること
+        assert!(config.layers.iter().any(|l| l.id == "fn_v2"));
+        assert!(!config.layers.iter().any(|l| l.id == "fn"));
+
+        // 2. 子レイヤーの parent_layer_id が "fn_v2" にカスケード更新されていること
+        let sub_layer = config.layers.iter().find(|l| l.id == "sub_fn").unwrap();
+        assert_eq!(sub_layer.parent_layer_id.as_deref(), Some("fn_v2"));
+
+        // 3. キーバインディング内の Action::LayerMomentary と Action::LayerToggle が "fn_v2" にカスケード更新されていること
+        let base_bindings = config.layers[0].bindings.get(&65).unwrap();
+        match &base_bindings[0].action {
+            Action::LayerMomentary { layer_id } => assert_eq!(layer_id, "fn_v2"),
+            _ => panic!("Expected LayerMomentary"),
+        }
+        match &base_bindings[1].action {
+            Action::LayerToggle { layer_id } => assert_eq!(layer_id, "fn_v2"),
+            _ => panic!("Expected LayerToggle"),
+        }
     }
 }

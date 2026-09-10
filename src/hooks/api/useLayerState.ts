@@ -79,6 +79,10 @@ export function useLayerState(): UseLayerStateReturn {
   // レイヤー削除
   const removeLayer = useCallback<UseLayerStateReturn["removeLayer"]>(
     (targetLayerId) => {
+      if (targetLayerId === "base") {
+        console.warn("baseレイヤーは削除できません。");
+        return;
+      }
       send("remove-layer", { layerId: targetLayerId });
       // 楽観的更新
       setLayers((prev) => prev.filter((l) => l.id !== targetLayerId));

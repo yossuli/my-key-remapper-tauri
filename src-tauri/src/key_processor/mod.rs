@@ -196,23 +196,31 @@ impl KeyProcessor {
         let mut state = get_state().lock().unwrap();
         let vks = state.pressed_vks.remove(&vk).unwrap_or_default();
         for target in vks {
-            if !(utils::is_modifier(target) && utils::is_modifier_passed_through(target, &state)) {
+            if !(utils::is_modifier(target) && utils::is_key_passed_through(target, &state)) {
                 send_key_raw(target, true);
             }
-        }
-
-        if let Some(suppressed) = state.suppressed_modifiers_for_key.remove(&vk) {
-            restore_suppressed_modifiers(&suppressed);
         }
 
         let is_momentary = state.momentary_layers.remove(&vk).is_some();
         state.momentary_keys.retain(|&(k, _)| k != vk);
         state.ghost_keys.remove(&vk);
 
-        if is_momentary {
-            let (effects, new_layers) = reconciliation::reconcile_momentary_on_release(&mut state, config);
-            drop(state);
+        let mut effects = reconciliation::ReconcileEffects::new();
+        let mut new_layers = Vec::new();
 
+        if is_momentary {
+            let (rec_effects, rec_layers) = reconciliation::reconcile_momentary_on_release(&mut state, config);
+            effects = rec_effects;
+            new_layers = rec_layers;
+        }
+
+        if let Some(suppressed) = state.suppressed_modifiers_for_key.remove(&vk) {
+            restore_suppressed_modifiers(&suppressed, &mut state, config);
+        }
+
+        drop(state);
+
+        if is_momentary {
             // ロック外で副作用（キー送信）を一括実行
             effects.execute();
 
@@ -962,16 +970,23 @@ mod tests {
 
         // ★ 検証: num_shift の defaultModifiers: { shift: true } により、
         // 物理Shiftはブロックされていても、OSに対して 160 KeyDown が正しく送信されていること！
-        // また、Remap [50] (Shiftなし) の送信時には、Shiftが一時的に suppress され、送信後に restore される。
+        // また、Remap [50] (Shiftなし) の押下時には、Shiftが一時的に suppress され、50 Down が送信される（長押し維持のため 50 Up は送出されない）。
         let sent_keys = utils::TEST_SENT_KEYS.lock().unwrap().clone();
         assert_eq!(
             sent_keys,
-            vec![(160, false), (160, true), (50, false), (50, true), (160, false)],
-            "Expected sequence: Shift Down (layer mod) -> Shift Up (suppress) -> 50 Down -> 50 Up -> Shift Down (restore)"
+            vec![(160, false), (160, true), (50, false)],
+            "Expected sequence on down: Shift Down (layer mod) -> Shift Up (suppress) -> 50 Down (hold sustained)"
         );
 
-        // 'w' (87) リリース
+        // 'w' (87) リリース -> 50 Up と Shift restore (160 Down) が送信される
+        utils::TEST_SENT_KEYS.lock().unwrap().clear();
         let _ = KeyProcessor::process_key(87, false, &config);
+        let sent_keys_w_rel = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+        assert_eq!(
+            sent_keys_w_rel,
+            vec![(50, true), (160, false)],
+            "Expected sequence on release: 50 Up -> Shift Down (restore)"
+        );
 
         // 4. Shift (160) リリース -> OSに 160 KeyUp が送信されること
         utils::TEST_SENT_KEYS.lock().unwrap().clear();
@@ -2817,6 +2832,300 @@ mod tests {
         assert_eq!(a_ctrl_up, HookAction::PassThrough);
         assert!(get_state().lock().unwrap().physically_pressed_modifiers.is_empty());
         assert!(get_state().lock().unwrap().active_layer_modifiers.is_empty());
+    }
+
+    #[test]
+    fn test_lr_shift_isolation_in_process_key_and_send_key_up() {
+        let _lock = state::TEST_LOCK.lock().unwrap();
+        let mut config = crate::get_default_config();
+        config.layers.clear();
+        config.layer_order = vec!["base".to_string()];
+
+        let mut base_bindings = std::collections::HashMap::new();
+        // Aキー (65): Hold で VK_LSHIFT (160) (通常解放・SustainHold)
+        base_bindings.insert(65, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::Remap {
+                keys: vec![utils::VK_LSHIFT],
+                repeat: Some(false),
+                repeat_delay_ms: None,
+                repeat_interval_ms: None,
+            },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        // Bキー (66): Tap & Hold 両方を設定
+        // - Tap: VK_LSHIFT へのリマップ
+        // - Hold: base レイヤー (ダミーHold)
+        // 短押し解放で WaitingForHold -> ExecuteTapAtomic -> ImmediateRelease -> send_key_up() を確実に通過させる
+        base_bindings.insert(66, vec![
+            crate::Binding {
+                trigger: Trigger::Tap,
+                action: Action::Remap {
+                    keys: vec![utils::VK_LSHIFT],
+                    repeat: Some(false),
+                    repeat_delay_ms: None,
+                    repeat_interval_ms: None,
+                },
+                timing_ms: None,
+                interrupt_behavior: None,
+            },
+            crate::Binding {
+                trigger: Trigger::Hold,
+                action: Action::LayerMomentary { layer_id: "base".to_string() },
+                timing_ms: Some(300),
+                interrupt_behavior: None,
+            },
+        ]);
+        // Cキー (67): Hold で VK_RSHIFT (161) (左右反転: 通常解放)
+        base_bindings.insert(67, vec![crate::Binding {
+            trigger: Trigger::Hold,
+            action: Action::Remap {
+                keys: vec![utils::VK_RSHIFT],
+                repeat: Some(false),
+                repeat_delay_ms: None,
+                repeat_interval_ms: None,
+            },
+            timing_ms: None,
+            interrupt_behavior: Some(InterruptBehavior::ForceHold),
+        }]);
+        // Dキー (68): Tap & Hold 両方を設定 (左右反転: 即時解放)
+        // - Tap: VK_RSHIFT へのリマップ
+        // - Hold: base レイヤー (ダミーHold)
+        // 短押し解放で WaitingForHold -> ExecuteTapAtomic -> ImmediateRelease -> send_key_up() を通過させる
+        base_bindings.insert(68, vec![
+            crate::Binding {
+                trigger: Trigger::Tap,
+                action: Action::Remap {
+                    keys: vec![utils::VK_RSHIFT],
+                    repeat: Some(false),
+                    repeat_delay_ms: None,
+                    repeat_interval_ms: None,
+                },
+                timing_ms: None,
+                interrupt_behavior: None,
+            },
+            crate::Binding {
+                trigger: Trigger::Hold,
+                action: Action::LayerMomentary { layer_id: "base".to_string() },
+                timing_ms: Some(300),
+                interrupt_behavior: None,
+            },
+        ]);
+
+        config.layers.push(crate::Layer {
+            id: "base".to_string(),
+            bindings: base_bindings,
+            default_modifiers: None,
+            passthrough_trigger_key: None,
+            parent_layer_id: None,
+        });
+
+        // ========================================================
+        // 1. 物理右Shift保持中に左Shiftへの通常リマップ (Aキー)
+        // ========================================================
+        {
+            {
+                let mut state = get_state().lock().unwrap();
+                state.active_layers = vec!["base".to_string()];
+                state.key_states.clear();
+                state.momentary_layers.clear();
+                state.pressed_vks.clear();
+                state.suppressed_modifiers_for_key.clear();
+                state.physically_pressed_modifiers.clear();
+                state.active_layer_modifiers.clear();
+                utils::TEST_SENT_KEYS.lock().unwrap().clear();
+            }
+
+            // (1) 物理右Shift (VK_RSHIFT) を押下 (素通し)
+            let action_rshift_down = KeyProcessor::process_key(utils::VK_RSHIFT, true, &config);
+            assert_eq!(action_rshift_down, HookAction::PassThrough);
+            assert!(get_state().lock().unwrap().physically_pressed_modifiers.contains(&utils::VK_RSHIFT));
+
+            utils::TEST_SENT_KEYS.lock().unwrap().clear();
+
+            // (2) Aキー (65) を押下 -> ダミーキー(999)でHold確定 -> LShift Down が送信され、pressed_vks に保持される
+            let _ = KeyProcessor::process_key(65, true, &config);
+            let _ = KeyProcessor::process_key(999, true, &config);
+            let sent_a_down = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+            assert!(
+                sent_a_down.iter().any(|&(vk, is_up)| vk == utils::VK_LSHIFT && !is_up),
+                "VK_LSHIFT KeyDown should be sent"
+            );
+            assert!(get_state().lock().unwrap().pressed_vks.contains_key(&65));
+
+            utils::TEST_SENT_KEYS.lock().unwrap().clear();
+
+            // (3) Aキー (65) を解放 (通常解放)
+            // 右Shiftが透過中であっても、左ShiftのKeyUpが省略されずに確実に送信されること！
+            let _ = KeyProcessor::process_key(65, false, &config);
+            let sent_a_up = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+            assert!(
+                sent_a_up.iter().any(|&(vk, is_up)| vk == utils::VK_LSHIFT && is_up),
+                "VK_LSHIFT KeyUp MUST be sent when A is released, even if VK_RSHIFT is physically held! Sent: {:?}",
+                sent_a_up
+            );
+            assert!(!get_state().lock().unwrap().pressed_vks.contains_key(&65));
+
+            // (4) 物理右Shift (VK_RSHIFT) を解放
+            let action_rshift_up = KeyProcessor::process_key(utils::VK_RSHIFT, false, &config);
+            assert_eq!(action_rshift_up, HookAction::PassThrough);
+
+            // 合成キーの残存チェック
+            let state = get_state().lock().unwrap();
+            assert!(state.pressed_vks.is_empty(), "pressed_vks must be empty");
+            assert!(state.active_layer_modifiers.is_empty(), "active_layer_modifiers must be empty");
+            assert!(state.physically_pressed_modifiers.is_empty(), "physically_pressed_modifiers must be empty");
+        }
+
+        // ========================================================
+        // 2. 左右反転: 物理左Shift保持中に右Shiftへの通常リマップ (Cキー)
+        // ========================================================
+        {
+            {
+                let mut state = get_state().lock().unwrap();
+                state.active_layers = vec!["base".to_string()];
+                state.key_states.clear();
+                state.momentary_layers.clear();
+                state.pressed_vks.clear();
+                state.suppressed_modifiers_for_key.clear();
+                state.physically_pressed_modifiers.clear();
+                state.active_layer_modifiers.clear();
+                utils::TEST_SENT_KEYS.lock().unwrap().clear();
+            }
+
+            // (1) 物理左Shift (VK_LSHIFT) を押下 (素通し)
+            let action_lshift_down = KeyProcessor::process_key(utils::VK_LSHIFT, true, &config);
+            assert_eq!(action_lshift_down, HookAction::PassThrough);
+
+            utils::TEST_SENT_KEYS.lock().unwrap().clear();
+
+            // (2) Cキー (67) を押下 -> ダミーキー(999)でHold確定 -> RShift Down が送信される
+            let _ = KeyProcessor::process_key(67, true, &config);
+            let _ = KeyProcessor::process_key(999, true, &config);
+            let sent_c_down = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+            assert!(
+                sent_c_down.iter().any(|&(vk, is_up)| vk == utils::VK_RSHIFT && !is_up),
+                "VK_RSHIFT KeyDown should be sent"
+            );
+
+            utils::TEST_SENT_KEYS.lock().unwrap().clear();
+
+            // (3) Cキー (67) を解放 (通常解放)
+            // 左Shiftが透過中であっても、右ShiftのKeyUpが確実に送信されること！
+            let _ = KeyProcessor::process_key(67, false, &config);
+            let sent_c_up = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+            assert!(
+                sent_c_up.iter().any(|&(vk, is_up)| vk == utils::VK_RSHIFT && is_up),
+                "VK_RSHIFT KeyUp MUST be sent when C is released, even if VK_LSHIFT is physically held! Sent: {:?}",
+                sent_c_up
+            );
+
+            // (4) 物理左Shift (VK_LSHIFT) を解放
+            let action_lshift_up = KeyProcessor::process_key(utils::VK_LSHIFT, false, &config);
+            assert_eq!(action_lshift_up, HookAction::PassThrough);
+
+            let state = get_state().lock().unwrap();
+            assert!(state.pressed_vks.is_empty());
+            assert!(state.active_layer_modifiers.is_empty());
+            assert!(state.physically_pressed_modifiers.is_empty());
+        }
+
+        // ========================================================
+        // 3. 物理右Shift保持中に左Shiftへの即時解放リマップ (Bキー: TapAtomic -> ImmediateRelease -> send_key_up)
+        // ========================================================
+        {
+            {
+                let mut state = get_state().lock().unwrap();
+                state.active_layers = vec!["base".to_string()];
+                state.key_states.clear();
+                state.momentary_layers.clear();
+                state.pressed_vks.clear();
+                state.suppressed_modifiers_for_key.clear();
+                state.physically_pressed_modifiers.clear();
+                state.active_layer_modifiers.clear();
+                utils::TEST_SENT_KEYS.lock().unwrap().clear();
+            }
+
+            // (1) 物理右Shift (VK_RSHIFT) を押下 (素通し)
+            let _ = KeyProcessor::process_key(utils::VK_RSHIFT, true, &config);
+            utils::TEST_SENT_KEYS.lock().unwrap().clear();
+
+            // (2) Bキー (66) を押下 (WaitingForHold に遷移するため、押下直後はキー出力なし)
+            let _ = KeyProcessor::process_key(66, true, &config);
+            assert!(
+                utils::TEST_SENT_KEYS.lock().unwrap().is_empty(),
+                "No key output should be emitted upon press for TapAndHold key"
+            );
+
+            // (3) Bキー (66) を短押し解放 -> ExecuteTapAtomic -> ImmediateRelease -> send_key_up
+            let _ = KeyProcessor::process_key(66, false, &config);
+
+            let sent_b = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+            // send_key_down と send_key_up がアトミックに連続実行され、VK_LSHIFT の Down と Up が揃っていること！
+            assert_eq!(
+                sent_b,
+                vec![(utils::VK_LSHIFT, false), (utils::VK_LSHIFT, true)],
+                "VK_LSHIFT Down and Up MUST be emitted in sequence via send_key_up! Sent: {:?}",
+                sent_b
+            );
+
+            // (4) 物理右Shift (VK_RSHIFT) を解放
+            let _ = KeyProcessor::process_key(utils::VK_RSHIFT, false, &config);
+
+            let state = get_state().lock().unwrap();
+            assert!(state.pressed_vks.is_empty(), "pressed_vks must be empty");
+            assert!(state.active_layer_modifiers.is_empty(), "active_layer_modifiers must be empty");
+            assert!(state.physically_pressed_modifiers.is_empty(), "physically_pressed_modifiers must be empty");
+        }
+
+        // ========================================================
+        // 4. 左右反転: 物理左Shift保持中に右Shiftへの即時解放リマップ (Dキー: TapAtomic -> ImmediateRelease -> send_key_up)
+        // ========================================================
+        {
+            {
+                let mut state = get_state().lock().unwrap();
+                state.active_layers = vec!["base".to_string()];
+                state.key_states.clear();
+                state.momentary_layers.clear();
+                state.pressed_vks.clear();
+                state.suppressed_modifiers_for_key.clear();
+                state.physically_pressed_modifiers.clear();
+                state.active_layer_modifiers.clear();
+                utils::TEST_SENT_KEYS.lock().unwrap().clear();
+            }
+
+            // (1) 物理左Shift (VK_LSHIFT) を押下 (素通し)
+            let _ = KeyProcessor::process_key(utils::VK_LSHIFT, true, &config);
+            utils::TEST_SENT_KEYS.lock().unwrap().clear();
+
+            // (2) Dキー (68) を押下 (WaitingForHold に遷移するため押下直後は出力なし)
+            let _ = KeyProcessor::process_key(68, true, &config);
+            assert!(
+                utils::TEST_SENT_KEYS.lock().unwrap().is_empty(),
+                "No key output should be emitted upon press for TapAndHold key"
+            );
+
+            // (3) Dキー (68) を短押し解放 -> ExecuteTapAtomic -> ImmediateRelease -> send_key_up
+            let _ = KeyProcessor::process_key(68, false, &config);
+
+            let sent_d = utils::TEST_SENT_KEYS.lock().unwrap().clone();
+            // send_key_down と send_key_up がアトミックに連続実行され、VK_RSHIFT の Down と Up が揃っていること！
+            assert_eq!(
+                sent_d,
+                vec![(utils::VK_RSHIFT, false), (utils::VK_RSHIFT, true)],
+                "VK_RSHIFT Down and Up MUST be emitted in sequence via send_key_up! Sent: {:?}",
+                sent_d
+            );
+
+            // (4) 物理左Shift (VK_LSHIFT) を解放
+            let _ = KeyProcessor::process_key(utils::VK_LSHIFT, false, &config);
+
+            let state = get_state().lock().unwrap();
+            assert!(state.pressed_vks.is_empty(), "pressed_vks must be empty");
+            assert!(state.active_layer_modifiers.is_empty(), "active_layer_modifiers must be empty");
+            assert!(state.physically_pressed_modifiers.is_empty(), "physically_pressed_modifiers must be empty");
+        }
     }
 }
 

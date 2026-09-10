@@ -36,20 +36,44 @@ pub fn get_profile_path(name: &str) -> PathBuf {
     get_profiles_dir().join(format!("{}.json", name))
 }
 
+const WINDOWS_RESERVED_NAMES: &[&str] = &[
+    "CON", "PRN", "AUX", "NUL",
+    "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+    "COM¹", "COM²", "COM³",
+    "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    "LPT¹", "LPT²", "LPT³",
+];
+
 pub fn validate_profile_name(name: &str) -> Result<String, String> {
+    // 制御文字 (0x00..=0x1F, 0x7F 等) の先行検査 (trimによる誤認通過を防止)
+    if name.chars().any(|c| c.is_control()) {
+        return Err("プロファイル名に制御文字が含まれています。".to_string());
+    }
+
     let trimmed = name.trim();
     if trimmed.is_empty() {
         return Err("プロファイル名を入力してください。".to_string());
     }
-    if trimmed.len() > 64 {
+    // UTF-8バイト長ではなく文字数でカウント（日本語名にも適切に対応）
+    if trimmed.chars().count() > 64 {
         return Err("プロファイル名は64文字以内で入力してください。".to_string());
     }
-    let invalid_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '\n', '\r', '\t'];
+    // Windows 禁止文字の完全拒絶
+    let invalid_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|'];
     if trimmed.chars().any(|c| invalid_chars.contains(&c)) {
-        return Err("プロファイル名に使用できない文字が含まれています (\\ / : * ? \" < > |)".to_string());
+        return Err("プロファイル名に使用できない文字が含まれています。".to_string());
     }
-    if trimmed == "." || trimmed == ".." {
+    if trimmed == "." || trimmed == ".." || trimmed.contains("..") {
         return Err("無効なプロファイル名です。".to_string());
+    }
+    if trimmed.ends_with('.') {
+        return Err("プロファイル名の末尾にドットを使用することはできません。".to_string());
+    }
+    // Windows 予約デバイス名チェック（完全一致および拡張子手前の stem 一致）
+    let stem = trimmed.split('.').next().unwrap_or(trimmed).trim();
+    let stem_upper = stem.to_uppercase();
+    if WINDOWS_RESERVED_NAMES.contains(&stem_upper.as_str()) {
+        return Err(format!("'{}' はシステム予約名のため使用できません。", trimmed));
     }
     Ok(trimmed.to_string())
 }
@@ -156,9 +180,10 @@ pub fn list_profiles(state: State<'_, ConfigState>) -> Result<ProfileListRespons
 
 #[tauri::command(rename = "load-profile")]
 pub fn load_profile(profile_name: String, state: State<'_, ConfigState>) -> Result<Config, String> {
-    let profile_path = get_profile_path(&profile_name);
+    let valid_name = validate_profile_name(&profile_name)?;
+    let profile_path = get_profile_path(&valid_name);
     if !profile_path.exists() {
-        return Err(format!("プロファイル '{}' が見つかりません。", profile_name));
+        return Err(format!("プロファイル '{}' が見つかりません。", valid_name));
     }
     let json = fs::read_to_string(&profile_path)
         .map_err(|e| format!("プロファイルの読み込みに失敗しました: {}", e))?;
@@ -166,10 +191,10 @@ pub fn load_profile(profile_name: String, state: State<'_, ConfigState>) -> Resu
         .map_err(|e| format!("プロファイルの解析に失敗しました: {}", e))?;
 
     state.config.store(Arc::new(config.clone()));
-    *state.active_profile.lock().unwrap() = profile_name.clone();
-    save_active_profile_meta(&profile_name);
+    *state.active_profile.lock().unwrap() = valid_name.clone();
+    save_active_profile_meta(&valid_name);
 
-    log::info!("Loaded profile: {}", profile_name);
+    log::info!("Loaded profile: {}", valid_name);
     Ok(config)
 }
 
@@ -179,6 +204,7 @@ pub fn copy_profile(
     new_name: String,
     state: State<'_, ConfigState>,
 ) -> Result<Config, String> {
+    let valid_source = validate_profile_name(&source_name)?;
     let valid_new_name = validate_profile_name(&new_name)?;
     let target_path = get_profile_path(&valid_new_name);
     if target_path.exists() {
@@ -186,12 +212,12 @@ pub fn copy_profile(
     }
 
     let active_name = state.active_profile.lock().unwrap().clone();
-    let config_to_copy = if source_name == active_name {
+    let config_to_copy = if valid_source == active_name {
         (**state.config.load()).clone()
     } else {
-        let source_path = get_profile_path(&source_name);
+        let source_path = get_profile_path(&valid_source);
         if !source_path.exists() {
-            return Err(format!("コピー元のプロファイル '{}' が見つかりません。", source_name));
+            return Err(format!("コピー元のプロファイル '{}' が見つかりません。", valid_source));
         }
         let json = fs::read_to_string(&source_path)
             .map_err(|e| format!("元プロファイルの読み込みに失敗しました: {}", e))?;
@@ -308,8 +334,9 @@ pub fn export_profile_with_dialog(
     profile_name: String,
     state: State<'_, ConfigState>,
 ) -> Result<Option<String>, String> {
-    let profile_path = get_profile_path(&profile_name);
-    let config_to_export = if profile_name == *state.active_profile.lock().unwrap() {
+    let valid_name = validate_profile_name(&profile_name)?;
+    let profile_path = get_profile_path(&valid_name);
+    let config_to_export = if valid_name == *state.active_profile.lock().unwrap() {
         (**state.config.load()).clone()
     } else if profile_path.exists() {
         let json = fs::read_to_string(&profile_path)
@@ -317,10 +344,10 @@ pub fn export_profile_with_dialog(
         serde_json::from_str::<Config>(&json)
             .map_err(|e| format!("プロファイルの解析に失敗しました: {}", e))?
     } else {
-        return Err(format!("プロファイル '{}' が見つかりません。", profile_name));
+        return Err(format!("プロファイル '{}' が見つかりません。", valid_name));
     };
 
-    let default_file_name = format!("{}.json", profile_name);
+    let default_file_name = format!("{}.json", valid_name);
     let file_path = rfd::FileDialog::new()
         .set_title("プロファイルのエクスポート先を選択")
         .add_filter("JSON 設定ファイル (*.json)", &["json"])
@@ -367,14 +394,15 @@ pub fn delete_profile(
     profile_name: String,
     state: State<'_, ConfigState>,
 ) -> Result<ProfileListResponse, String> {
+    let valid_name = validate_profile_name(&profile_name)?;
     let list = get_profile_list_internal();
     if list.len() <= 1 {
         return Err("プロファイルが1つしかないため削除できません。".to_string());
     }
 
-    let target_path = get_profile_path(&profile_name);
+    let target_path = get_profile_path(&valid_name);
     if !target_path.exists() {
-        return Err(format!("プロファイル '{}' が見つかりません。", profile_name));
+        return Err(format!("プロファイル '{}' が見つかりません。", valid_name));
     }
 
     fs::remove_file(&target_path)
@@ -383,7 +411,7 @@ pub fn delete_profile(
     let remaining_list = get_profile_list_internal();
     let current_active = state.active_profile.lock().unwrap().clone();
 
-    let new_active = if current_active == profile_name {
+    let new_active = if current_active == valid_name {
         let fallback = remaining_list.first().cloned().unwrap_or_else(|| "default".to_string());
         let _ = load_profile(fallback.clone(), state);
         fallback
@@ -407,14 +435,21 @@ mod tests {
         assert_eq!(validate_profile_name("game-1").unwrap(), "game-1");
         assert_eq!(validate_profile_name("my profile").unwrap(), "my profile");
         assert_eq!(validate_profile_name("  trimmed  ").unwrap(), "trimmed");
+        assert_eq!(validate_profile_name("profile_2026").unwrap(), "profile_2026");
     }
 
     #[test]
     fn test_validate_profile_name_invalid() {
+        // 空白・空文字
         assert!(validate_profile_name("").is_err());
         assert!(validate_profile_name("   ").is_err());
+
+        // パストラバーサル・禁止文字
         assert!(validate_profile_name("profile/test").is_err());
         assert!(validate_profile_name("profile\\test").is_err());
+        assert!(validate_profile_name("../../secret").is_err());
+        assert!(validate_profile_name("..\\windows").is_err());
+        assert!(validate_profile_name("foo..bar").is_err());
         assert!(validate_profile_name("test:1").is_err());
         assert!(validate_profile_name("test*").is_err());
         assert!(validate_profile_name("test?").is_err());
@@ -424,7 +459,52 @@ mod tests {
         assert!(validate_profile_name("test|").is_err());
         assert!(validate_profile_name(".").is_err());
         assert!(validate_profile_name("..").is_err());
-        let too_long = "a".repeat(65);
-        assert!(validate_profile_name(&too_long).is_err());
+
+        // 末尾ピリオド
+        assert!(validate_profile_name("test.").is_err());
+        assert!(validate_profile_name("my_profile.").is_err());
+
+        // Windows 予約名 (大文字・小文字、完全一致)
+        assert!(validate_profile_name("CON").is_err());
+        assert!(validate_profile_name("con").is_err());
+        assert!(validate_profile_name("PRN").is_err());
+        assert!(validate_profile_name("prn").is_err());
+        assert!(validate_profile_name("AUX").is_err());
+        assert!(validate_profile_name("aux").is_err());
+        assert!(validate_profile_name("NUL").is_err());
+        assert!(validate_profile_name("nul").is_err());
+        assert!(validate_profile_name("COM1").is_err());
+        assert!(validate_profile_name("com1").is_err());
+        assert!(validate_profile_name("LPT3").is_err());
+        assert!(validate_profile_name("lpt3").is_err());
+
+        // Windows 予約名の拡張子付き (stem一致)
+        assert!(validate_profile_name("CON.txt").is_err());
+        assert!(validate_profile_name("con.backup").is_err());
+        assert!(validate_profile_name("NUL.json").is_err());
+        assert!(validate_profile_name("nul.config").is_err());
+        assert!(validate_profile_name("COM1.xml").is_err());
+        assert!(validate_profile_name("lpt2.old").is_err());
+
+        // 制御文字 (途中および前後の混入)
+        assert!(validate_profile_name("test\x01name").is_err());
+        assert!(validate_profile_name("test\x1fname").is_err());
+        assert!(validate_profile_name("\ntest").is_err());
+        assert!(validate_profile_name("test\r\n").is_err());
+        assert!(validate_profile_name("\ttest").is_err());
+
+        // Windows 予約名 (上付き数字 COM¹〜COM³, LPT¹〜LPT³)
+        assert!(validate_profile_name("COM¹").is_err());
+        assert!(validate_profile_name("com¹").is_err());
+        assert!(validate_profile_name("LPT²").is_err());
+        assert!(validate_profile_name("lpt³.txt").is_err());
+
+        // 文字数制限 (UTF-8マルチバイト対応)
+        let japanese_ok = "あ".repeat(64);
+        assert!(validate_profile_name(&japanese_ok).is_ok());
+        let japanese_too_long = "あ".repeat(65);
+        assert!(validate_profile_name(&japanese_too_long).is_err());
+        let ascii_too_long = "a".repeat(65);
+        assert!(validate_profile_name(&ascii_too_long).is_err());
     }
 }

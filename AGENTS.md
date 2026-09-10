@@ -18,7 +18,7 @@
 ## 📚 ドキュメント・インデックス
 
 - **タスク管理**:
-  - [バックエンド・リファクタリング タスク索引](file:///mnt/c/Users/yo44a/Documents/tauri-key-remapper/docs/tasks/README.md)
+  - [プロダクト改善・リファクタリング総合タスク索引](file:///mnt/c/Users/yo44a/Documents/tauri-key-remapper/docs/tasks/README.md)
 - **コア仕様**:
   - [キーリマップ仕様書](file:///mnt/c/Users/yo44a/Documents/tauri-key-remapper/REMAP_SPECIFICATIONS.md)
   - [フロントエンド設定型定義](file:///mnt/c/Users/yo44a/Documents/tauri-key-remapper/src/types/remapConfig.ts)

@@ -101,7 +101,10 @@ export function LayerTabs({
 
               return (
                 <Reorder.Item as="div" key={id} value={id}>
-                  <WithRemoveBadge onRemove={() => handleRemoveClick(id)}>
+                  <WithRemoveBadge
+                    disabled={id === "base"}
+                    onRemove={() => handleRemoveClick(id)}
+                  >
                     <ContextMenu>
                       <ContextMenuTrigger>
                         <TabsTrigger

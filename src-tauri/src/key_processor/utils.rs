@@ -195,7 +195,13 @@ pub fn send_key_atomic(virtual_vk: u16) {
 }
 
 pub fn send_key_down(physical_vk: u16, virtual_vk: u16) {
-    get_state().lock().unwrap().pressed_vks.entry(physical_vk).or_default().push(virtual_vk);
+    {
+        let mut state = get_state().lock().unwrap();
+        let vks = state.pressed_vks.entry(physical_vk).or_default();
+        if !vks.contains(&virtual_vk) {
+            vks.push(virtual_vk);
+        }
+    }
     send_key_raw(virtual_vk, false);
 }
 
@@ -275,7 +281,7 @@ pub fn send_key_up(physical_vk: u16, virtual_vk: u16, _config: &Config) {
         if is_empty {
             state.pressed_vks.remove(&physical_vk);
         }
-        is_modifier(virtual_vk) && is_modifier_passed_through(virtual_vk, &state)
+        is_modifier(virtual_vk) && is_key_passed_through(virtual_vk, &state)
     };
 
     if !should_skip_raw_up {
@@ -298,6 +304,7 @@ pub fn release_all_virtual_keys() {
         state.ghost_keys.clear();
         state.physically_pressed_modifiers.clear();
         state.active_layer_modifiers.clear();
+        state.suppressed_modifiers_for_key.clear();
         state.active_layers = vec!["base".to_string()];
         (targets, state.active_layers.clone())
     };
@@ -501,13 +508,59 @@ pub fn suppress_active_modifiers_for_remap(
         send_key_raw(m, true);
     }
 
+    {
+        let mut state = get_state().lock().unwrap();
+        for &m in &to_suppress {
+            state.active_layer_modifiers.retain(|&k| !is_modifier_subsumed(k, &[m]));
+        }
+    }
+
     to_suppress
 }
 
-pub fn restore_suppressed_modifiers(suppressed: &[u16]) {
+pub fn restore_suppressed_modifiers(
+    suppressed: &[u16],
+    state: &mut super::state::ProcessorState,
+    config: &Config,
+) {
+    let mut needs_layer_reconcile = false;
+
     for &m in suppressed {
-        log::debug!("restore modifier after remap: vk={}", m);
-        send_key_raw(m, false);
+        // 他の押下中キーが同じ修飾キーを抑制中である場合は、早期復元せず抑制を継続
+        let is_suppressed_by_others = state
+            .suppressed_modifiers_for_key
+            .values()
+            .any(|supp| is_modifier_subsumed(m, supp));
+
+        if is_suppressed_by_others {
+            log::debug!("skip restoring modifier vk={} as it is still suppressed by another active key", m);
+            continue;
+        }
+
+        let is_pt = is_key_passed_through(m, state);
+        let is_layer_mod = {
+            let active_mods = compute_active_modifiers(&state.active_layers, config);
+            is_modifier_subsumed(m, &active_mods.into_iter().collect::<Vec<_>>())
+        };
+
+        if is_pt {
+            // 1. このキーコード m 自体が物理透過中の場合: 物理キーのDownを復元 (物理解放時にUpされる)
+            log::debug!("restore passthrough physical modifier after remap: vk={}", m);
+            send_key_raw(m, false);
+        } else if is_layer_mod {
+            // 2. レイヤー合成由来の修飾キー: 再同期パイプラインへ統合して状態追跡とキー送信を整合
+            needs_layer_reconcile = true;
+        } else if is_physical_key_down(m, state) {
+            // 3. このキーコード m 自体が物理的に押されている場合: 物理キーのDownを復元
+            log::debug!("restore physical modifier after remap: vk={}", m);
+            send_key_raw(m, false);
+        } else {
+            log::debug!("skip restoring modifier vk={} as it is no longer active in context", m);
+        }
+    }
+
+    if needs_layer_reconcile {
+        reconcile_layer_modifiers(state, config);
     }
 }
 
@@ -696,6 +749,7 @@ mod tests {
             state.momentary_keys.push((0x50, std::time::Instant::now()));
             state.ghost_keys.insert(0x51);
             state.physically_pressed_modifiers.insert(VK_LSHIFT);
+            state.suppressed_modifiers_for_key.insert(0x50, vec![VK_LSHIFT]);
         }
 
         release_all_virtual_keys();
@@ -706,6 +760,7 @@ mod tests {
         assert!(state.momentary_keys.is_empty());
         assert!(state.ghost_keys.is_empty());
         assert!(state.physically_pressed_modifiers.is_empty());
+        assert!(state.suppressed_modifiers_for_key.is_empty());
         assert_eq!(state.active_layers, vec!["base".to_string()]);
     }
 
@@ -920,5 +975,190 @@ mod tests {
         let pos = get_mouse_pos();
         assert_eq!(pos, (0, 0));
     }
+
+    #[test]
+    fn test_send_key_down_avoids_duplicate_pressed_vks() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        TEST_SENT_KEYS.lock().unwrap().clear();
+        {
+            let mut state = get_state().lock().unwrap();
+            state.pressed_vks.clear();
+        }
+
+        send_key_down(65, 66);
+        send_key_down(65, 66); // 重複呼び出し
+
+        let state = get_state().lock().unwrap();
+        assert_eq!(state.pressed_vks.get(&65), Some(&vec![66]));
+    }
+
+    #[test]
+    fn test_restore_suppressed_modifiers_reverse_release_protection() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        TEST_SENT_KEYS.lock().unwrap().clear();
+
+        let mut config = crate::get_default_config();
+        config.layers.push(crate::Layer {
+            id: "fn".to_string(),
+            default_modifiers: Some(crate::ModifierOutput {
+                shift: Some(true),
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+
+        // 1. 通常解放時: レイヤー "fn" がアクティブな場合、Shift Down が復元されること
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string(), "fn".to_string()];
+            state.physically_pressed_modifiers.clear();
+            state.active_layer_modifiers.clear();
+            TEST_SENT_KEYS.lock().unwrap().clear();
+
+            restore_suppressed_modifiers(&[VK_LSHIFT], &mut state, &config);
+        }
+        let sent_active = TEST_SENT_KEYS.lock().unwrap().clone();
+        assert_eq!(sent_active, vec![(VK_LSHIFT, false)], "Should restore Shift when layer is active");
+
+        // 2. 逆順解放時: レイヤートリガーが先に離され、アクティブレイヤーが "base" のみの場合
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()];
+            state.physically_pressed_modifiers.clear();
+            TEST_SENT_KEYS.lock().unwrap().clear();
+
+            restore_suppressed_modifiers(&[VK_LSHIFT], &mut state, &config);
+        }
+        let sent_inactive = TEST_SENT_KEYS.lock().unwrap().clone();
+        assert!(sent_inactive.is_empty(), "Should NOT restore Shift when layer is no longer active (reverse release protection)");
+
+        // 3. 物理修飾キー押下時: 物理的にShiftが押されている場合は復元されること
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()];
+            state.physically_pressed_modifiers.insert(VK_LSHIFT);
+            TEST_SENT_KEYS.lock().unwrap().clear();
+
+            restore_suppressed_modifiers(&[VK_LSHIFT], &mut state, &config);
+        }
+        let sent_phys = TEST_SENT_KEYS.lock().unwrap().clone();
+        assert_eq!(sent_phys, vec![(VK_LSHIFT, false)], "Should restore Shift when physically held");
+
+        // 3-b. 物理Shift保持 かつ レイヤーもShift要求中の重複条件 (アストラ指摘の境界ケース):
+        // 物理キーが透過中 (Passthrough) の状態でレイヤーがShiftを要求している場合、
+        // 物理透過キーの復元として確実に (VK_LSHIFT, false) が送出されること
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string(), "fn".to_string()];
+            state.physically_pressed_modifiers.insert(VK_LSHIFT);
+            let now = std::time::Instant::now();
+            state.key_states.insert(
+                VK_LSHIFT,
+                crate::state_machine::KeyState::PassthroughHoldActive {
+                    activated_at: now,
+                    last_repeated_at: now,
+                },
+            );
+            // 抑制されていたため active_layer_modifiers には入っていない状態
+            state.active_layer_modifiers.clear();
+            TEST_SENT_KEYS.lock().unwrap().clear();
+
+            restore_suppressed_modifiers(&[VK_LSHIFT], &mut state, &config);
+            state.key_states.remove(&VK_LSHIFT);
+        }
+        let sent_phys_and_layer = TEST_SENT_KEYS.lock().unwrap().clone();
+        assert_eq!(sent_phys_and_layer, vec![(VK_LSHIFT, false)], "Should restore Shift when physically held even if layer also requires Shift");
+
+        // 4. 複数キー押下時の抑制共有 (所有権管理):
+        // 他のキー (例: 66 'B') がまだ Shift を抑制中である場合、キー 65 'A' の解放で Shift Down を復元してはならない
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string(), "fn".to_string()];
+            state.physically_pressed_modifiers.clear();
+            state.active_layer_modifiers.clear();
+            // キー 66 ('B') が Shift を抑制中として残っている状態をシミュレート
+            state.suppressed_modifiers_for_key.insert(66, vec![VK_LSHIFT]);
+            TEST_SENT_KEYS.lock().unwrap().clear();
+
+            // キー 65 ('A') の解放処理をシミュレート (A の抑制リストにあった VK_LSHIFT を復元試行)
+            restore_suppressed_modifiers(&[VK_LSHIFT], &mut state, &config);
+        }
+        let sent_shared = TEST_SENT_KEYS.lock().unwrap().clone();
+        assert!(sent_shared.is_empty(), "Should NOT restore Shift when another key (66) is still suppressing it!");
+
+        // その後、キー 66 ('B') も離されて抑制リストが空になった場合、最後の所有者として Shift Down が復元されること
+        {
+            let mut state = get_state().lock().unwrap();
+            state.suppressed_modifiers_for_key.remove(&66);
+            TEST_SENT_KEYS.lock().unwrap().clear();
+
+            restore_suppressed_modifiers(&[VK_LSHIFT], &mut state, &config);
+        }
+        let sent_last_owner = TEST_SENT_KEYS.lock().unwrap().clone();
+        assert_eq!(sent_last_owner, vec![(VK_LSHIFT, false)], "Should restore Shift when the last suppressing key is released");
+
+        // 5. アストラ指摘のライフサイクル完全性:
+        // 「除外 -> 復元 -> レイヤー解除」の操作列で、復元時に active_layer_modifiers に再登録され、
+        // 最終的なレイヤー解除時に確実に Shift Up が送出されること
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string(), "fn".to_string()];
+            state.active_layer_modifiers.clear(); // 再同期によって除外された状態をシミュレート
+            state.suppressed_modifiers_for_key.clear();
+            TEST_SENT_KEYS.lock().unwrap().clear();
+
+            // A の解放による復元
+            restore_suppressed_modifiers(&[VK_LSHIFT], &mut state, &config);
+
+            // Shift Down が送信され、かつ active_layer_modifiers に再登録されていること！
+            assert_eq!(TEST_SENT_KEYS.lock().unwrap().clone(), vec![(VK_LSHIFT, false)]);
+            assert!(state.active_layer_modifiers.contains(&VK_LSHIFT), "active_layer_modifiers must re-track restored Shift!");
+
+            // その後、Shift レイヤー ("fn") を解除する
+            state.active_layers = vec!["base".to_string()];
+            TEST_SENT_KEYS.lock().unwrap().clear();
+
+            // レイヤー解除の再同期を実行
+            reconcile_layer_modifiers(&mut state, &config);
+
+            // active_layer_modifiers に登録されていたため、確実に Shift Up が送出されること！
+            assert_eq!(TEST_SENT_KEYS.lock().unwrap().clone(), vec![(VK_LSHIFT, true)], "Shift Up MUST be emitted upon layer deactivation!");
+            assert!(state.active_layer_modifiers.is_empty(), "active_layer_modifiers must be empty after deactivation!");
+        }
+
+        // 6. 左右キーコードの独立性 (アストラ第6回指摘):
+        // 物理右Shift (VK_RSHIFT) が透過中であっても、左Shift (VK_LSHIFT) が誤って物理キー復元経路として送出されないこと
+        {
+            let mut state = get_state().lock().unwrap();
+            state.active_layers = vec!["base".to_string()]; // レイヤー修飾キーなし
+            state.physically_pressed_modifiers.clear();
+            state.physically_pressed_modifiers.insert(VK_RSHIFT);
+            let now = std::time::Instant::now();
+            state.key_states.insert(
+                VK_RSHIFT,
+                crate::state_machine::KeyState::PassthroughHoldActive {
+                    activated_at: now,
+                    last_repeated_at: now,
+                },
+            );
+            state.active_layer_modifiers.clear();
+            state.suppressed_modifiers_for_key.clear();
+            TEST_SENT_KEYS.lock().unwrap().clear();
+
+            // 抑制されていた VK_LSHIFT の復元試行
+            restore_suppressed_modifiers(&[VK_LSHIFT], &mut state, &config);
+
+            // VK_LSHIFT は物理透過も物理押下もされていないため、物理キー復元として送出されてはならない！
+            assert!(
+                TEST_SENT_KEYS.lock().unwrap().is_empty(),
+                "VK_LSHIFT must NOT be restored as physical key when only VK_RSHIFT is passed through!"
+            );
+
+            // クリーンアップ
+            state.key_states.remove(&VK_RSHIFT);
+            state.physically_pressed_modifiers.clear();
+        }
+    }
 }
+
 

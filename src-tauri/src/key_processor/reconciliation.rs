@@ -88,13 +88,20 @@ pub fn compute_desired_layer_modifiers(
         }
 
         if required {
-            let has_passthrough = state
-                .physically_pressed_modifiers
-                .iter()
-                .any(|&k| (def.is_match)(k) && is_key_passed_through(k, state));
+            let is_suppressed = state
+                .suppressed_modifiers_for_key
+                .values()
+                .any(|supp| supp.iter().any(|&s| (def.is_match)(s)));
 
-            if state.active_layer_modifiers.contains(&def.representative_vk) || !has_passthrough {
-                desired.insert(def.representative_vk);
+            if !is_suppressed {
+                let has_passthrough = state
+                    .physically_pressed_modifiers
+                    .iter()
+                    .any(|&k| (def.is_match)(k) && is_key_passed_through(k, state));
+
+                if state.active_layer_modifiers.contains(&def.representative_vk) || !has_passthrough {
+                    desired.insert(def.representative_vk);
+                }
             }
         }
     }
@@ -311,6 +318,17 @@ mod tests {
         assert!(desired_with_pt.contains(&VK_LCONTROL));
         assert!(desired_with_pt.contains(&VK_LMENU));
         assert!(desired_with_pt.contains(&VK_LWIN));
+
+        // 物理Shiftを解放し、代わりにリマップキー (例: 0x41 'A') が Ctrl を抑制している場合
+        state.physically_pressed_modifiers.clear();
+        state.suppressed_modifiers_for_key.insert(0x41, vec![VK_LCONTROL]);
+        let desired_with_suppression = compute_desired_layer_modifiers(&state, &config);
+        // Ctrl は抑制中のため除外される
+        assert!(!desired_with_suppression.contains(&VK_LCONTROL));
+        // 抑制されていない Shift, Alt, Win は desired に含まれる
+        assert!(desired_with_suppression.contains(&VK_LSHIFT));
+        assert!(desired_with_suppression.contains(&VK_LMENU));
+        assert!(desired_with_suppression.contains(&VK_LWIN));
     }
 }
 
