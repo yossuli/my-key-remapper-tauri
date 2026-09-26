@@ -3,6 +3,9 @@ pub mod utils;
 pub mod actions;
 pub mod reconciliation;
 
+#[cfg(test)]
+mod ime_diagnostics;
+
 use smallvec::SmallVec;
 use crate::{Action, Config, InterruptBehavior, Trigger};
 use crate::state_machine::{transition, ActionCommand, KeyCapability, KeyState, TriggerEvent};
@@ -3128,4 +3131,3 @@ mod tests {
         }
     }
 }
-

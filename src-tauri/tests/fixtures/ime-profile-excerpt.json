@@ -1,0 +1,250 @@
+{
+  "version": 1,
+  "layers": [
+    {
+      "id": "base",
+      "bindings": {
+        "13": [
+          {
+            "trigger": "tap",
+            "action": {
+              "type": "remap",
+              "keys": [
+                162,
+                13
+              ],
+              "repeat": false,
+              "repeatDelayMs": 500,
+              "repeatIntervalMs": 100
+            }
+          }
+        ],
+        "28": [
+          {
+            "trigger": "hold",
+            "action": {
+              "type": "layerMomentary",
+              "layerId": "arrow"
+            },
+            "interruptBehavior": "forceHold"
+          }
+        ],
+        "161": [
+          {
+            "trigger": "hold",
+            "action": {
+              "type": "layerMomentary",
+              "layerId": "shift"
+            }
+          }
+        ],
+        "32": [
+          {
+            "trigger": "doubleTap",
+            "action": {
+              "type": "remap",
+              "keys": [
+                13
+              ],
+              "repeat": false,
+              "repeatDelayMs": 500,
+              "repeatIntervalMs": 100
+            }
+          },
+          {
+            "trigger": "hold",
+            "action": {
+              "type": "remap",
+              "keys": [
+                160,
+                13
+              ],
+              "repeat": false,
+              "repeatDelayMs": 500,
+              "repeatIntervalMs": 10
+            }
+          }
+        ],
+        "29": [
+          {
+            "trigger": "hold",
+            "action": {
+              "type": "layerMomentary",
+              "layerId": "num"
+            },
+            "interruptBehavior": "forceHold"
+          }
+        ],
+        "160": [
+          {
+            "trigger": "hold",
+            "action": {
+              "type": "layerMomentary",
+              "layerId": "shift"
+            },
+            "interruptBehavior": "forceHold"
+          }
+        ]
+      },
+      "defaultModifiers": {
+        "shift": false
+      }
+    },
+    {
+      "id": "num",
+      "bindings": {
+        "81": [
+          {
+            "trigger": "tap",
+            "action": {
+              "type": "remap",
+              "keys": [
+                97
+              ]
+            }
+          }
+        ],
+        "160": [
+          {
+            "trigger": "hold",
+            "action": {
+              "type": "layerMomentary",
+              "layerId": "num_shift"
+            }
+          }
+        ]
+      },
+      "defaultModifiers": {
+        "shift": false
+      }
+    },
+    {
+      "id": "arrow",
+      "bindings": {
+        "76": [
+          {
+            "trigger": "tap",
+            "action": {
+              "type": "remap",
+              "keys": [
+                37
+              ],
+              "repeat": false,
+              "repeatDelayMs": 500,
+              "repeatIntervalMs": 100
+            }
+          }
+        ],
+        "32": [
+          {
+            "trigger": "tap",
+            "action": {
+              "type": "remap",
+              "keys": [
+                32
+              ],
+              "repeat": false,
+              "repeatDelayMs": 500,
+              "repeatIntervalMs": 100
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "shift",
+      "bindings": {
+        "29": [
+          {
+            "trigger": "tap",
+            "action": {
+              "type": "remap",
+              "keys": [
+                29
+              ],
+              "repeat": false,
+              "repeatDelayMs": 500,
+              "repeatIntervalMs": 100
+            }
+          },
+          {
+            "trigger": "hold",
+            "action": {
+              "type": "layerMomentary",
+              "layerId": "num_shift"
+            },
+            "interruptBehavior": "forceHold"
+          }
+        ],
+        "28": [
+          {
+            "trigger": "tap",
+            "action": {
+              "type": "remap",
+              "keys": [
+                29,
+                189,
+                32,
+                28
+              ],
+              "repeat": false,
+              "repeatDelayMs": 500,
+              "repeatIntervalMs": 100
+            }
+          }
+        ],
+        "32": [
+          {
+            "trigger": "doubleTap",
+            "action": {
+              "type": "remap",
+              "keys": [
+                32
+              ],
+              "repeat": false,
+              "repeatDelayMs": 500,
+              "repeatIntervalMs": 100
+            }
+          }
+        ]
+      },
+      "defaultModifiers": {
+        "shift": false
+      },
+      "passthroughTriggerKey": true
+    },
+    {
+      "id": "num_shift",
+      "bindings": {
+        "81": [
+          {
+            "trigger": "tap",
+            "action": {
+              "type": "remap",
+              "keys": [
+                160,
+                49
+              ]
+            }
+          }
+        ]
+      },
+      "defaultModifiers": {
+        "shift": true
+      },
+      "parentLayerId": "num"
+    }
+  ],
+  "layerOrder": [
+    "base",
+    "shift",
+    "num",
+    "arrow",
+    "num_shift"
+  ],
+  "globalSettings": {
+    "defaultHoldThresholdMs": 200,
+    "defaultTapIntervalMs": 300
+  },
+  "macros": []
+}
