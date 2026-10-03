@@ -3,7 +3,7 @@ use crate::Config;
 use std::collections::HashSet;
 #[cfg(all(windows, not(test)))]
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD,
+    INPUT, INPUT_0, INPUT_KEYBOARD,
     INPUT_MOUSE, MOUSEINPUT,
     MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP,
     MOUSEEVENTF_WHEEL, MOUSEEVENTF_HWHEEL,
@@ -159,7 +159,7 @@ pub fn send_key_raw(vk: u16, is_up: bool) {
             Anonymous: INPUT_0 { ki },
         };
         unsafe {
-            SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
+            crate::diagnostics::send_input(&[input]);
         }
     }
     #[cfg(all(not(windows), not(test)))]
@@ -184,7 +184,7 @@ pub fn send_key_atomic(virtual_vk: u16) {
             },
         ];
         unsafe {
-            SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+            crate::diagnostics::send_input(&inputs);
         }
     }
     #[cfg(not(all(windows, not(test))))]
@@ -606,7 +606,9 @@ pub fn send_mouse_move(x: i32, y: i32) {
     }
     #[cfg(all(windows, not(test)))]
     unsafe {
+        crate::diagnostics::record("cursor_move_request", serde_json::json!({"x":x,"y":y}));
         let result = SetCursorPos(x, y);
+        crate::diagnostics::record("cursor_move_result", serde_json::json!({"success":result.is_ok(),"error":result.as_ref().err().map(|e| e.to_string())}));
         log::info!("SetCursorPos result: {:?}", result);
     }
     #[cfg(all(not(windows), not(test)))]
@@ -647,7 +649,7 @@ pub fn send_mouse_click(button: &str, click_count: u32) {
         }
 
         unsafe {
-            let result = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+            let result = crate::diagnostics::send_input(&inputs);
             log::info!("send_mouse_click result: {}", result);
         }
     }
@@ -701,7 +703,7 @@ pub fn send_mouse_wheel(delta_y: i32, delta_x: i32) {
 
         if !inputs.is_empty() {
             unsafe {
-                let _ = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+                let _ = crate::diagnostics::send_input(&inputs);
             }
         }
     }
@@ -1160,5 +1162,3 @@ mod tests {
         }
     }
 }
-
-

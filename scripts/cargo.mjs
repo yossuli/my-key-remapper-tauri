@@ -72,7 +72,7 @@ const result = spawnSync(
     timeout: 120_000,
     env: {
       ...process.env,
-      TS_RS_EXPORT_DIR: "src/types/generated/",
+      TS_RS_EXPORT_DIR: path.resolve("src/types/generated"),
     },
   }
 );
