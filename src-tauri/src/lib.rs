@@ -9,6 +9,7 @@ pub mod key_processor;
 pub mod state_machine;
 pub mod profile;
 pub mod model;
+mod diagnostics;
 
 pub use model::*;
 
@@ -89,6 +90,7 @@ pub fn get_default_config() -> Config {
 fn save_current_config(config: &Config, state: &State<'_, ConfigState>) {
     let active_profile = state.active_profile.lock().unwrap().clone();
     profile::save_config_to_disk(config, &active_profile);
+    diagnostics::record("configuration", serde_json::json!({"profile":active_profile,"config":config}));
 }
 
 #[tauri::command(rename = "update-global-settings")]
@@ -200,6 +202,7 @@ fn save_key_config(layer_id: String, from: u32, binding: Binding, state: State<'
 #[tauri::command(rename = "set-remap-enabled")]
 fn set_remap_enabled(enabled: bool) {
     log::info!("set_remap_enabled: {}", enabled);
+    diagnostics::record("remap_enabled", serde_json::json!({"enabled":enabled}));
     #[cfg(windows)]
     hook::REMAP_ENABLED.store(enabled, std::sync::atomic::Ordering::SeqCst);
 }
@@ -441,6 +444,9 @@ pub fn run() {
                 active_profile: Mutex::new(active_profile),
             });
 
+            diagnostics::initialize(app.handle())?;
+            diagnostics::record("configuration", serde_json::json!({"config":&**app.state::<ConfigState>().config.load()}));
+            diagnostics::setup_tray(app.handle())?;
             #[cfg(windows)]
             {
                 hook::setup_hook(app.handle().clone());
@@ -450,6 +456,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            diagnostics::diagnostic_status,
+            diagnostics::diagnostic_mark,
+            diagnostics::diagnostic_save,
             get_mappings,
             update_global_settings,
             get_screen_size,
@@ -483,12 +492,13 @@ pub fn run() {
         .expect("error while building tauri application");
 
     app.run(|_app_handle, event| match event {
-        tauri::RunEvent::ExitRequested { .. } => {
+        tauri::RunEvent::Exit => {
             #[cfg(windows)]
             {
                 raw_input::stop_raw_input_listener();
                 hook::teardown_hook();
             }
+            diagnostics::shutdown();
         }
         _ => {}
     });

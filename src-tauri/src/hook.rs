@@ -41,6 +41,7 @@ pub fn set_scroll_mode_state(active: bool, sensitivity: f64, invert: bool, axis:
 }
 
 pub fn emit_layer_stack_changed(stack: &[String]) {
+    crate::diagnostics::record("layer_stack", serde_json::json!({"stack":stack}));
     if let Some(app) = APP_HANDLE.get() {
         let _ = app.emit("layer-stack-changed", serde_json::json!({ "stack": stack }));
     }
@@ -136,6 +137,11 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
         let is_injected = (flags & 0x10) != 0;
         let is_self_injected = is_injected && kb_struct.dwExtraInfo == crate::key_processor::utils::INJECTED_SIGNATURE;
 
+        crate::diagnostics::record("keyboard_input", serde_json::json!({
+            "vk":kb_struct.vkCode,"scan":kb_struct.scanCode,"flags":flags,
+            "message":wparam.0,"osTime":kb_struct.time,"injected":is_injected,
+            "selfInjected":is_self_injected,"remapEnabled":REMAP_ENABLED.load(Ordering::Relaxed)
+        }));
         let key_event = RawKeyEvent::from_wparam(wparam.0 as u32);
         match (key_event, is_self_injected) {
             (RawKeyEvent::Down, false) | (RawKeyEvent::Up, false) => {
@@ -166,8 +172,11 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
                         let config = state.config.load();
 
                         match KeyProcessor::process_key(vk_code as u16, is_down, &config) {
-                            HookAction::Block => return windows::Win32::Foundation::LRESULT(1),
-                            HookAction::PassThrough => {}
+                            HookAction::Block => {
+                                crate::diagnostics::record("hook_decision", serde_json::json!({"vk":vk_code,"osTime":kb_struct.time,"blocked":true}));
+                                return windows::Win32::Foundation::LRESULT(1);
+                            },
+                            HookAction::PassThrough => { crate::diagnostics::record("hook_decision", serde_json::json!({"vk":vk_code,"osTime":kb_struct.time,"blocked":false})); }
                         }
                     }
                 }
