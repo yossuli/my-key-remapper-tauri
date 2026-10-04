@@ -17,6 +17,7 @@ static LOGGER: OnceLock<Recorder> = OnceLock::new();
 static SESSION: OnceLock<String> = OnceLock::new();
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 const ROTATE_BYTES: u64 = 16 * 1024 * 1024;
+const INPUT_IDLE_US: u64 = 5_000_000;
 
 #[derive(Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -30,9 +31,144 @@ pub struct Incident {
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticStatus {
     pub path: String,
+    pub incidents_path: String,
     pub dropped_events: f64,
     pub error: Option<String>,
     pub pending: Option<Incident>,
+}
+// Keep the whole current input interval on disk, independently of rolling logs.
+// Only the writer thread accesses these files; the hook never performs disk I/O.
+struct IncidentArchive {
+    spool_path: PathBuf,
+    spool: BufWriter<File>,
+    directory: PathBuf,
+    last_input_us: Option<u64>,
+    pressed_keys: std::collections::BTreeSet<(u64, bool, bool)>,
+    context: std::collections::BTreeMap<String, Value>,
+    pending: Option<(String, PathBuf)>,
+}
+impl IncidentArchive {
+    fn new(log_path: &std::path::Path) -> std::io::Result<Self> {
+        let parent = log_path
+            .parent()
+            .ok_or_else(|| std::io::Error::other("missing log directory"))?;
+        let directory = parent.join("incidents");
+        fs::create_dir_all(&directory)?;
+        let spool_path = parent.join("current-interval.jsonl");
+        let spool = BufWriter::new(File::create(&spool_path)?);
+        Ok(Self {
+            spool_path,
+            spool,
+            directory,
+            last_input_us: None,
+            context: Default::default(),
+            pressed_keys: Default::default(),
+            pending: None,
+        })
+    }
+    fn write_line(writer: &mut impl Write, event: &Value) -> std::io::Result<()> {
+        serde_json::to_writer(&mut *writer, event)?;
+        writer.write_all(b"\n")
+    }
+    fn record(&mut self, event: &Value) -> std::io::Result<()> {
+        let kind = event["kind"].as_str().unwrap_or_default();
+        let elapsed = event["elapsedUs"]
+            .as_str()
+            .and_then(|s| s.parse::<u64>().ok());
+        let input = matches!(
+            kind,
+            "keyboard_input" | "os_send_request" | "cursor_move_request"
+        );
+        if input {
+            if let Some(now) = elapsed {
+                if self.pressed_keys.is_empty()
+                    && self
+                        .last_input_us
+                        .is_some_and(|last| now.saturating_sub(last) >= INPUT_IDLE_US)
+                {
+                    self.spool.flush()?;
+                    self.spool.get_ref().set_len(0)?;
+                    self.spool.seek(SeekFrom::Start(0))?;
+                    Self::write_line(
+                        &mut self.spool,
+                        &json!({"kind":"interval_start", "elapsedUs":now.to_string(), "idleThresholdMs":INPUT_IDLE_US / 1000}),
+                    )?;
+                    for context in self.context.values() {
+                        Self::write_line(&mut self.spool, context)?;
+                    }
+                }
+                self.last_input_us = Some(now);
+            }
+        }
+        if kind == "keyboard_input" {
+            if let (Some(vk), Some(message)) = (
+                event["data"]["vk"].as_u64(),
+                event["data"]["message"].as_u64(),
+            ) {
+                match message {
+                    0x100 | 0x104 => {
+                        self.pressed_keys.insert((
+                            vk,
+                            event["data"]["injected"].as_bool().unwrap_or(false),
+                            event["data"]["selfInjected"].as_bool().unwrap_or(false),
+                        ));
+                    }
+                    0x101 | 0x105 => {
+                        self.pressed_keys.remove(&(
+                            vk,
+                            event["data"]["injected"].as_bool().unwrap_or(false),
+                            event["data"]["selfInjected"].as_bool().unwrap_or(false),
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        if matches!(
+            kind,
+            "session_start" | "configuration" | "remap_enabled" | "layer_stack" | "dropped_events"
+        ) {
+            self.context.insert(kind.to_owned(), event.clone());
+        }
+        Self::write_line(&mut self.spool, event)?;
+        if kind == "incident_mark" {
+            if let (Some(id), Some(session)) = (
+                event["data"]["incident"]["id"].as_str(),
+                event["session"].as_str(),
+            ) {
+                // These identifiers are generated internally. Also reject path components.
+                if !id
+                    .bytes()
+                    .chain(session.bytes())
+                    .all(|b| b.is_ascii_digit() || b == b'-')
+                {
+                    return Err(std::io::Error::other("invalid incident identifier"));
+                }
+                self.spool.flush()?;
+                let path = self.directory.join(format!("{session}-{id}.jsonl"));
+                let mut saved = OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&path)?;
+                std::io::copy(&mut File::open(&self.spool_path)?, &mut saved)?;
+                saved.sync_all()?;
+                self.pending = Some((id.to_owned(), path));
+            }
+        } else if kind == "incident_note" {
+            if let Some(id) = event["data"]["incident"]["id"].as_str() {
+                let path = self
+                    .pending
+                    .as_ref()
+                    .filter(|(pending, _)| pending == id)
+                    .map(|(_, path)| path)
+                    .ok_or_else(|| std::io::Error::other("incident archive is unavailable"))?;
+                let mut saved = OpenOptions::new().append(true).open(path)?;
+                Self::write_line(&mut saved, event)?;
+                saved.sync_all()?;
+            }
+        }
+        Ok(())
+    }
 }
 enum Message {
     Event(Value),
@@ -125,6 +261,7 @@ fn writer_loop(
     dropped: Arc<AtomicU64>,
     error: Arc<Mutex<Option<String>>>,
 ) {
+    let mut archive = IncidentArchive::new(&file.path);
     let mut last_flush = Instant::now();
     let mut batch = 0;
     let mut reported_drops = 0;
@@ -154,12 +291,23 @@ fn writer_loop(
         let result = (|| -> std::io::Result<()> {
             let drops = dropped.load(Ordering::Relaxed);
             if drops != reported_drops {
-                file.write(&json!({"kind":"dropped_events","unixMs":unix_ms(),"total":drops}))?;
+                let event = json!({"kind":"dropped_events","unixMs":unix_ms(),"total":drops});
+                let archive_result = match &mut archive {
+                    Ok(archive) => archive.record(&event),
+                    Err(error) => Err(std::io::Error::other(error.to_string())),
+                };
+                let rolling_result = file.write(&event);
                 reported_drops = drops;
+                archive_result.and(rolling_result)?;
             }
             if let Some(event) = event {
-                file.write(&event)?;
+                let archive_result = match &mut archive {
+                    Ok(archive) => archive.record(&event),
+                    Err(error) => Err(std::io::Error::other(error.to_string())),
+                };
+                let rolling_result = file.write(&event);
                 batch += 1;
+                archive_result.and(rolling_result)?;
             }
             if batch >= 128
                 || last_flush.elapsed() >= Duration::from_secs(1)
@@ -168,6 +316,9 @@ fn writer_loop(
                 || idle
             {
                 file.flush()?;
+                if let Ok(archive) = &mut archive {
+                    archive.spool.flush()?;
+                }
                 batch = 0;
                 last_flush = Instant::now();
             }
@@ -222,6 +373,11 @@ pub fn diagnostic_status() -> Result<DiagnosticStatus, String> {
     let logger = LOGGER.get().ok_or("ログが初期化されていません")?;
     Ok(DiagnosticStatus {
         path: logger.path.to_string_lossy().into_owned(),
+        incidents_path: logger
+            .path
+            .with_file_name("incidents")
+            .to_string_lossy()
+            .into_owned(),
         dropped_events: logger.dropped.load(Ordering::Relaxed) as f64,
         error: logger.error.lock().map_err(|e| e.to_string())?.clone(),
         pending: logger.pending.lock().map_err(|e| e.to_string())?.clone(),
@@ -395,6 +551,21 @@ pub unsafe fn send_input(inputs: &[windows::Win32::UI::Input::KeyboardAndMouse::
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn input_event(elapsed: u64, down: bool) -> Value {
+        json!({"kind":"keyboard_input", "elapsedUs":elapsed.to_string(),
+            "data":{"vk":65,"message":if down { 0x100 } else { 0x101 }}})
+    }
+    fn read_events(path: &std::path::Path) -> Vec<Value> {
+        fs::read_to_string(path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect()
+    }
+    fn mark_event(id: &str, elapsed: u64) -> Value {
+        json!({"kind":"incident_mark", "session":"100-200", "elapsedUs":elapsed.to_string(),
+            "data":{"incident":{"id":id},"processor":{"layers":["base"]}}})
+    }
     fn temp_dir() -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
             "remapper-diagnostics-{}-{}",
@@ -403,6 +574,130 @@ mod tests {
         ));
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+    #[test]
+    fn archive_keeps_latest_interval_context_and_freezes_at_mark() {
+        let dir = temp_dir();
+        let mut archive = IncidentArchive::new(&dir.join("events.jsonl")).unwrap();
+        let config = json!({"kind":"configuration", "data":{"profile":"test"}});
+        archive.record(&config).unwrap();
+        archive.record(&input_event(0, true)).unwrap();
+        archive.record(&input_event(1, false)).unwrap();
+        archive
+            .record(&input_event(INPUT_IDLE_US + 1, true))
+            .unwrap();
+        let detail = json!({"kind":"hook_decision","data":{"blocked":true}});
+        archive.record(&detail).unwrap();
+        let mark = mark_event("1", INPUT_IDLE_US + 2);
+        archive.record(&mark).unwrap();
+        let path = dir.join("incidents/100-200-1.jsonl");
+        assert_eq!(
+            read_events(&path),
+            vec![
+                json!({"kind":"interval_start","elapsedUs":(INPUT_IDLE_US + 1).to_string(),"idleThresholdMs":5000}),
+                config,
+                input_event(INPUT_IDLE_US + 1, true),
+                detail,
+                mark,
+            ]
+        );
+        // Activity while composing the note must not enter the frozen archive,
+        // even if the current interval is subsequently replaced.
+        archive
+            .record(&input_event(INPUT_IDLE_US + 3, false))
+            .unwrap();
+        archive
+            .record(&input_event(INPUT_IDLE_US * 3, true))
+            .unwrap();
+        let note = json!({"kind":"incident_note","data":{"incident":{"id":"1"},"note":"症状"}});
+        archive.record(&note).unwrap();
+        assert_eq!(read_events(&path).len(), 6);
+        assert_eq!(read_events(&path).last(), Some(&note));
+        archive
+            .record(&mark_event("2", INPUT_IDLE_US * 3 + 1))
+            .unwrap();
+        assert!(path.exists());
+        assert!(dir.join("incidents/100-200-2.jsonl").exists());
+        drop(archive);
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn long_hold_and_rolling_history_do_not_truncate_incident() {
+        let dir = temp_dir();
+        let path = dir.join("events.jsonl");
+        let mut archive = IncidentArchive::new(&path).unwrap();
+        let mut rolling = LogFile::open(path, 50).unwrap();
+        let mut expected = Vec::new();
+        expected.push(input_event(0, true));
+        expected.push(input_event(INPUT_IDLE_US * 2, false));
+        for i in 0..30 {
+            expected.push(json!({"kind":"os_send_result","data":{"batch":i}}));
+        }
+        expected.push(mark_event("3", INPUT_IDLE_US * 2 + 1));
+        for event in &expected {
+            archive.record(event).unwrap();
+            rolling.write(event).unwrap();
+        }
+        rolling.flush().unwrap();
+        assert_eq!(
+            read_events(&dir.join("incidents/100-200-3.jsonl")),
+            expected
+        );
+        drop(archive);
+        drop(rolling);
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn archive_failure_is_reported_to_flush_caller() {
+        let dir = temp_dir();
+        fs::write(dir.join("incidents"), "directory blocked").unwrap();
+        let file = LogFile::open(dir.join("events.jsonl"), ROTATE_BYTES).unwrap();
+        let (tx, rx) = mpsc::sync_channel(8);
+        let error = Arc::new(Mutex::new(None));
+        let worker_error = error.clone();
+        let worker = std::thread::spawn(move || {
+            writer_loop(file, rx, Arc::new(AtomicU64::new(0)), worker_error)
+        });
+        tx.send(Message::Event(mark_event("4", 0))).unwrap();
+        let (ack, done) = mpsc::channel();
+        tx.send(Message::Stop(ack)).unwrap();
+        assert!(done.recv_timeout(Duration::from_secs(2)).unwrap().is_err());
+        worker.join().unwrap();
+        assert!(error.lock().unwrap().is_some());
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn worker_saves_mark_without_note_then_appends_note_before_ack() {
+        let dir = temp_dir();
+        let file = LogFile::open(dir.join("events.jsonl"), 50).unwrap();
+        let (tx, rx) = mpsc::sync_channel(8);
+        let worker = std::thread::spawn(move || {
+            writer_loop(
+                file,
+                rx,
+                Arc::new(AtomicU64::new(0)),
+                Arc::new(Mutex::new(None)),
+            )
+        });
+        tx.send(Message::Event(input_event(0, true))).unwrap();
+        tx.send(Message::Event(mark_event("5", 1))).unwrap();
+        let (ack, done) = mpsc::channel();
+        tx.send(Message::Flush(ack)).unwrap();
+        done.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+        let path = dir.join("incidents/100-200-5.jsonl");
+        assert_eq!(read_events(&path).len(), 2);
+        let note = json!({"kind":"incident_note","data":{"incident":{"id":"5"},"note":""}});
+        tx.send(Message::Event(input_event(2, false))).unwrap();
+        tx.send(Message::Event(note.clone())).unwrap();
+        let (ack, done) = mpsc::channel();
+        tx.send(Message::Stop(ack)).unwrap();
+        done.recv_timeout(Duration::from_secs(2)).unwrap().unwrap();
+        worker.join().unwrap();
+        assert_eq!(
+            read_events(&path),
+            vec![input_event(0, true), mark_event("5", 1), note]
+        );
+        fs::remove_dir_all(dir).unwrap();
     }
     #[test]
     fn rotates_complete_json_lines_and_bounds_history() {

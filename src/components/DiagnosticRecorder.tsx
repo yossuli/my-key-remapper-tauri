@@ -141,7 +141,7 @@ export function DiagnosticRecorder({
             <DialogDescription>
               記録した時刻: {new Date(incident.unixMs).toLocaleString()}
               <br />
-              時刻はすでにマーク済みです。空欄でも保存できます。閉じる操作でもメモを保存します。
+              直前の入力区間を異常専用ファイルに記録します。空欄でも保存できます。閉じる操作でもメモを保存します。
             </DialogDescription>
             <label className="text-sm" htmlFor="incident-note">
               何が起きましたか？
@@ -177,10 +177,13 @@ export function DiagnosticRecorder({
           <details className="max-w-full text-xs">
             <summary className="cursor-pointer">ログ保存先</summary>
             <p className="select-text break-all">{status.path}</p>
+            <p>異常記録の保存先:</p>
+            <p className="select-text break-all">{status.incidentsPath}</p>
             <p>
               キーコードを記録します。入力内容を推測できるため共有時はご注意ください。
             </p>
             <p>16 MB × 最大8ファイル。古いログから置き換えます。</p>
+            <p>異常記録は別ファイルで保持し、自動削除しません。</p>
           </details>
         )}
         {!!(error || status?.error) && (
