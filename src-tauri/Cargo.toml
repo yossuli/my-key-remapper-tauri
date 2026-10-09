@@ -24,7 +24,7 @@ log = "0.4"
 tauri = { version = "2.11.3", features = ["tray-icon"] }
 tauri-plugin-log = "2"
 arc-swap = "1.7"
-rfd = "0.15"
+rfd = "0.17"
 smallvec = { version = "1.13", features = ["serde"] }
 ts-rs = { version = "10", features = ["serde-json-impl", "no-serde-warnings"] }
 
